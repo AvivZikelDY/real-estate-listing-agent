@@ -1,0 +1,46 @@
+{
+  "patterns": {
+    "kindergarten": "גני?\\s*ילדים|גנים|kindergarten|daycare",
+    "parking": "חני[הת]|חניון|parking",
+    "safe_room": "ממ״?ד|safe\\s*room",
+    "floor": "קומה|floor",
+    "delivery": "מסירה|delivery",
+    "parquet": "פרקט|parquet",
+    "rent_to_purchase": "השכרה|שכיר|rent|רכישה\\s*על\\s*ידי|rent[- ]to[- ]purchase",
+    "view": "נוף|view",
+    "kitchen": "מטבח|kitchen",
+    "bathroom": "מקלח|bath"
+  },
+  "hits": {
+    "kindergarten": [
+      9
+    ],
+    "parking": [],
+    "safe_room": [
+      1
+    ],
+    "floor": [
+      4
+    ],
+    "delivery": [
+      6,
+      8,
+      10
+    ],
+    "parquet": [
+      8
+    ],
+    "rent_to_purchase": [
+      10
+    ],
+    "view": [
+      9
+    ],
+    "kitchen": [
+      7
+    ],
+    "bathroom": [
+      7
+    ]
+  }
+}

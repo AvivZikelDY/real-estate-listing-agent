@@ -1,0 +1,203 @@
+=== SCENARIO 1 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים מהממת ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+קרובה לבתי ספר, גנים ופארקים.
+מחיר מציאה מתחת למחיר השוק.
+question: none
+llm_mode: real
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: none
+goal: general_listing_triage
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: ברחוב דיזנגוף 100 בתל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: מהממת
+type: subjective
+category: None
+source: listing
+verifiability: unverifiable_subjective
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-2
+text: ברחוב דיזנגוף 100 בתל אביב.
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-3
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-4
+text: מחיר 4,700,000 ש"ח.
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-5
+text: קרובה לבתי ספר, גנים ופארקים.
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-6
+text: מחיר מציאה מתחת למחיר השוק.
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-1
+text: מהממת
+reason: subjective_marketing_claim
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'raw_address': 'ברחוב דיזנגוף 100 בתל אביב'}
+supports_claim_ids: None
+
+tool: price_signal
+arguments: {'asking_price': 4700000, 'sqm': 100, 'rooms': 4, 'raw_address': 'ברחוב דיזנגוף 100 בתל אביב'}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services synthesized: a known verifiable claim (claim-5) had no proposed tool call in the raw plan.
+- nearby_services retained: explicit categories=['school', 'daycare', 'park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-5', 'claim-6']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'raw_address': 'ברחוב דיזנגוף 100 בתל אביב'}
+
+call_id: tool-call-2
+tool_name: price_signal
+supports_claim_ids: ['claim-6']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'asking_price': 4700000, 'sqm': 100, 'rooms': 4, 'raw_address': 'ברחוב דיזנגוף 100 בתל אביב'}
+
+call_id: tool-call-3
+tool_name: nearby_services
+supports_claim_ids: ['claim-5']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['school', 'daycare', 'park']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "ברחוב דיזנגוף 100 בתל אביב",
+  "city_hint": "תל אביב"
+}
+
+price_signal (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce a resolved address
+{
+  "normalized_address": {
+    "from_call": "tool-call-1",
+    "field": "normalized_address"
+  },
+  "neighborhood": {
+    "from_call": "tool-call-1",
+    "field": "neighborhood"
+  },
+  "listing_type": "purchase",
+  "asking_price": 4700000.0,
+  "area_sqm": 100.0
+}
+
+nearby_services (tool-call-3):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "school",
+    "daycare",
+    "park"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: real
+llm_calls: 1
+planner_duration_ms: 43490.99
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 3
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 43491.36
+

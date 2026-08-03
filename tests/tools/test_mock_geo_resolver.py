@@ -1,0 +1,57 @@
+import pytest
+
+from src.listing_agent.tools.mock_implementations import MockGeoResolver
+from src.listing_agent.tools.schemas import GeoResolverInput
+
+
+@pytest.mark.asyncio
+async def test_known_address_returns_deterministic_coordinates() -> None:
+    tool = MockGeoResolver()
+
+    result = await tool.execute(GeoResolverInput(address="HaYarkon 120, Tel Aviv"))
+
+    assert result.status == "ok"
+    assert result.error is None
+    assert result.data.outcome == "resolved"
+    assert result.data.lat == pytest.approx(32.0853)
+    assert result.data.lon == pytest.approx(34.7738)
+    assert result.data.neighborhood == "Old North (HaTzafon HaYashan)"
+
+
+@pytest.mark.asyncio
+async def test_known_address_lookup_is_case_and_whitespace_insensitive() -> None:
+    tool = MockGeoResolver()
+
+    result = await tool.execute(GeoResolverInput(address="  hayarkon   120,  tel aviv  "))
+
+    assert result.status == "ok"
+    assert result.data.lat == pytest.approx(32.0853)
+
+
+@pytest.mark.asyncio
+async def test_unknown_address_returns_structured_not_found_outcome() -> None:
+    tool = MockGeoResolver()
+
+    result = await tool.execute(GeoResolverInput(address="1 Nowhere St, Atlantis"))
+
+    assert result.status == "ok"
+    assert result.error is None
+    assert result.data.outcome == "not_found"
+    assert result.data.lat is None
+    assert result.data.lon is None
+    assert result.data.limitations
+    assert "1 Nowhere St, Atlantis" in result.data.limitations[0]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_address_returns_structured_ambiguous_outcome() -> None:
+    tool = MockGeoResolver()
+
+    result = await tool.execute(GeoResolverInput(address="Dizengoff 50"))
+
+    assert result.status == "ok"
+    assert result.error is None
+    assert result.data.outcome == "ambiguous"
+    assert len(result.data.candidates) >= 2
+    assert result.data.lat is None
+    assert result.data.limitations

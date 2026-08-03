@@ -1,0 +1,1561 @@
+=== SCENARIO 1 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים מהממת ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+קרובה לבתי ספר, גנים ופארקים.
+מחיר מציאה מתחת למחיר השוק.
+question: none
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: none
+goal: general_listing_triage
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-2
+text: מחיר 4,700,000 ש"ח
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-3
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-4
+text: דירה מהממת
+type: subjective
+category: condition
+source: listing
+verifiability: unverifiable_subjective
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-5
+text: קרובה לבתי ספר, גנים ופארקים
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-6
+text: מחיר מציאה מתחת למחיר השוק
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-4
+text: דירה מהממת
+reason: subjective_marketing_claim
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['school']}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['kindergarten']}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['park']}
+supports_claim_ids: None
+
+tool: price_signal
+arguments: {}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['school', 'kindergarten', 'park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-5', 'claim-6']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-5']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: True
+planner_arguments: {'categories': ['school', 'kindergarten', 'park']}
+
+call_id: tool-call-3
+tool_name: price_signal
+supports_claim_ids: ['claim-6']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "school",
+    "daycare",
+    "park"
+  ],
+  "radius_m": 500
+}
+
+price_signal (tool-call-3):
+  # unresolved dependency: geo_resolver did not produce a resolved address
+{
+  "normalized_address": {
+    "from_call": "tool-call-1",
+    "field": "normalized_address"
+  },
+  "neighborhood": {
+    "from_call": "tool-call-1",
+    "field": "neighborhood"
+  },
+  "listing_type": "purchase",
+  "asking_price": 4700000.0,
+  "area_sqm": 100.0
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.07
+planned_tool_calls_before_deduplication: 5
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 3
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.2
+
+=== SCENARIO 2 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, קרובה לבתי ספר, גנים ופארקים.
+question: האם הדירה מתאימה למשפחה עם שני ילדים קטנים?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם הדירה מתאימה למשפחה עם שני ילדים קטנים?
+goal: family_suitability
+answerability: partially_verifiable
+question_derived_claims:
+  - האם הדירה מתאימה למשפחה עם שני ילדים קטנים?
+relevant_listing_claims:
+  - דירת 4 חדרים
+  - ברחוב דיזנגוף 100 בתל אביב
+  - 100 מ"ר
+  - קרובה לבתי ספר, גנים ופארקים
+claims_ignored_not_relevant_to_question:
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: None
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-3
+text: קרובה לבתי ספר, גנים ופארקים
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-4
+text: האם הדירה מתאימה למשפחה עם שני ילדים קטנים?
+type: factual
+category: family_suitability
+source: user_question
+verifiability: unsupported_claim_type
+relevant_to_question: True
+proposed_tools:
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-4
+text: האם הדירה מתאימה למשפחה עם שני ילדים קטנים?
+reason: unsupported_claim_type
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['school', 'kindergarten', 'park']}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['school', 'kindergarten', 'park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-3']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-3']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['school', 'kindergarten', 'park']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "school",
+    "daycare",
+    "park"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.05
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.11
+
+=== SCENARIO 3 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+question: האם המחיר נמוך ממחיר השוק?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם המחיר נמוך ממחיר השוק?
+goal: price_validation
+answerability: verifiable
+question_derived_claims:
+  - האם המחיר נמוך ממחיר השוק?
+relevant_listing_claims:
+  - ברחוב דיזנגוף 100 בתל אביב
+  - 100 מ"ר
+  - מחיר 4,700,000 ש"ח
+claims_ignored_not_relevant_to_question:
+  - דירת 4 חדרים
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-3
+text: מחיר 4,700,000 ש"ח
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-4
+text: האם המחיר נמוך ממחיר השוק?
+type: factual
+category: price_comparison
+source: user_question
+verifiability: verifiable
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+(none)
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: price_signal
+arguments: {}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- No normalization or validation changes were needed.
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-4']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: price_signal
+supports_claim_ids: ['claim-4']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+price_signal (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce a resolved address
+{
+  "normalized_address": {
+    "from_call": "tool-call-1",
+    "field": "normalized_address"
+  },
+  "neighborhood": {
+    "from_call": "tool-call-1",
+    "field": "neighborhood"
+  },
+  "listing_type": "purchase",
+  "asking_price": 4700000.0,
+  "area_sqm": 100.0
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.07
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.13
+
+=== SCENARIO 4 ===
+
+1. INPUT
+-------
+listing: דירת 3 חדרים ברחוב אבן גבירול 80 בתל אביב.
+question: האם יש פארק קרוב לדירה?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם יש פארק קרוב לדירה?
+goal: nearby_services_check
+answerability: verifiable
+question_derived_claims:
+  - האם יש פארק קרוב לדירה?
+relevant_listing_claims:
+  - ברחוב אבן גבירול 80 בתל אביב
+claims_ignored_not_relevant_to_question:
+  - דירת 3 חדרים
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: אבן גבירול 80, תל אביב
+asking_price: None
+rooms: 3.0
+sqm: None
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 3 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: ברחוב אבן גבירול 80 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: האם יש פארק קרוב לדירה?
+type: factual
+category: nearby_amenities
+source: user_question
+verifiability: verifiable
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+(none)
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'אבן גבירול 80, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['park']}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-2']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'אבן גבירול 80, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-2']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['park']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "אבן גבירול 80, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "park"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.04
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.09
+
+=== SCENARIO 5 ===
+
+1. INPUT
+-------
+listing: דירת 3 חדרים ברחוב דיזנגוף 100 בתל אביב.
+קרובה לבתי ספר.
+question: האם יש בית ספר במרחק של עד 10 דקות הליכה?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם יש בית ספר במרחק של עד 10 דקות הליכה?
+goal: nearby_services_check
+answerability: partially_verifiable
+question_derived_claims:
+  - האם יש בית ספר במרחק של עד 10 דקות הליכה?
+relevant_listing_claims:
+  - ברחוב דיזנגוף 100 בתל אביב
+  - קרובה לבתי ספר
+claims_ignored_not_relevant_to_question:
+  - דירת 3 חדרים
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: None
+rooms: 3.0
+sqm: None
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 3 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: קרובה לבתי ספר
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-3
+text: האם יש בית ספר במרחק של עד 10 דקות הליכה?
+type: factual
+category: nearby_amenities
+source: user_question
+verifiability: verifiable
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+(none)
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['school']}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['school'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-2', 'claim-3']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-2', 'claim-3']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['school']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "school"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.04
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.11
+
+=== SCENARIO 6 ===
+
+1. INPUT
+-------
+listing: דירה ברחוב דיזנגוף 100 בתל אביב, קרובה לבתי ספר.
+question: האם בתי הספר באזור טובים?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם בתי הספר באזור טובים?
+goal: nearby_services_check
+answerability: partially_verifiable
+question_derived_claims:
+  - האם בתי הספר באזור טובים?
+relevant_listing_claims:
+  - ברחוב דיזנגוף 100 בתל אביב
+  - קרובה לבתי ספר
+claims_ignored_not_relevant_to_question:
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: None
+rooms: None
+sqm: None
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-1
+text: קרובה לבתי ספר
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-2
+text: האם בתי הספר באזור טובים?
+type: factual
+category: nearby_amenities
+source: user_question
+verifiability: verifiable
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+(none)
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['school']}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['school'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-1', 'claim-2']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-1', 'claim-2']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['school']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "school"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.03
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.07
+
+=== SCENARIO 7 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים במרכז תל אביב.
+question: האם יש בבניין מעלית וחניה פרטית?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם יש בבניין מעלית וחניה פרטית?
+goal: general_question
+answerability: unsupported
+question_derived_claims:
+  - האם יש בבניין מעלית וחניה פרטית?
+relevant_listing_claims:
+  - דירת 4 חדרים
+  - במרכז תל אביב
+claims_ignored_not_relevant_to_question:
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: מרכז תל אביב
+asking_price: None
+rooms: 4.0
+sqm: None
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: במרכז תל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: האם יש בבניין מעלית וחניה פרטית?
+type: factual
+category: None
+source: user_question
+verifiability: unsupported_claim_type
+relevant_to_question: True
+proposed_tools:
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-2
+text: האם יש בבניין מעלית וחניה פרטית?
+reason: unsupported_claim_type
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+(the planner proposed no tool calls)
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- No normalization or validation changes were needed.
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+(no tool calls in the final validated plan)
+9. PREPARED TOOL INPUTS
+-----------------------
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.02
+planned_tool_calls_before_deduplication: 0
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 0
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.05
+
+=== SCENARIO 8 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים בצפון תל אביב.
+מחיר מציאה.
+question: האם המחיר באמת משתלם?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם המחיר באמת משתלם?
+goal: price_validation
+answerability: missing_information
+question_derived_claims:
+  - האם המחיר באמת משתלם?
+relevant_listing_claims:
+  - בצפון תל אביב
+  - מחיר מציאה
+claims_ignored_not_relevant_to_question:
+  - דירת 4 חדרים
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: צפון תל אביב
+asking_price: None
+rooms: 4.0
+sqm: None
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: בצפון תל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-2
+text: מחיר מציאה
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable_but_not_checked
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+claim_id: claim-3
+text: האם המחיר באמת משתלם?
+type: factual
+category: price_comparison
+source: user_question
+verifiability: verifiable_but_not_checked
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-2
+text: מחיר מציאה
+reason: missing_required_information
+
+claim_id: claim-3
+text: האם המחיר באמת משתלם?
+reason: missing_required_information
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: price_signal
+arguments: {}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- price_signal rejected: missing asking_price or sqm after argument normalization.
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+(no tool calls in the final validated plan)
+9. PREPARED TOOL INPUTS
+-----------------------
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.02
+planned_tool_calls_before_deduplication: 1
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 0
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.06
+
+=== SCENARIO 9 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+קרובה לבתי ספר, גנים ופארקים.
+מחיר מציאה מתחת למחיר השוק.
+question: מעניין אותי רק אם יש פארק קרוב.
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: מעניין אותי רק אם יש פארק קרוב.
+goal: nearby_services_check
+answerability: verifiable
+question_derived_claims:
+  - מעניין אותי רק אם יש פארק קרוב.
+relevant_listing_claims:
+  - בדיזנגוף 100 בתל אביב
+  - קרובה לבתי ספר, גנים ופארקים
+claims_ignored_not_relevant_to_question:
+  - דירת 4 חדרים
+  - 100 מ"ר
+  - מחיר 4,700,000 ש"ח
+  - מחיר מציאה מתחת למחיר השוק
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-2
+text: מחיר 4,700,000 ש"ח
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-3
+text: בדיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-4
+text: קרובה לבתי ספר, גנים ופארקים
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: claim-5
+text: מחיר מציאה מתחת למחיר השוק
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable_but_not_checked
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+claim_id: claim-6
+text: מעניין אותי רק אם יש פארק קרוב.
+type: factual
+category: nearby_amenities
+source: user_question
+verifiability: verifiable
+relevant_to_question: True
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-5
+text: מחיר מציאה מתחת למחיר השוק
+reason: rejected_by_plan_validation
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['park']}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-4', 'claim-5', 'claim-6']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-4', 'claim-6']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['park']}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "park"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.04
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.14
+
+=== SCENARIO 10 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח, קרובה לפארקים.
+question: מה דעתך על הדירה?
+llm_mode: fake
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: מה דעתך על הדירה?
+goal: general_question
+answerability: verifiable
+question_derived_claims:
+relevant_listing_claims:
+  - דירת 4 חדרים
+  - 100 מ"ר
+  - מחיר 4,700,000 ש"ח
+  - ברחוב דיזנגוף 100 בתל אביב
+  - קרובה לפארקים
+claims_ignored_not_relevant_to_question:
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: דיזנגוף 100, תל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: claim-0
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: claim-1
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-2
+text: מחיר 4,700,000 ש"ח
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-3
+text: ברחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: claim-4
+text: קרובה לפארקים
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+(none)
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'דיזנגוף 100, תל אביב'}
+supports_claim_ids: None
+
+tool: nearby_services
+arguments: {'categories': ['park']}
+supports_claim_ids: None
+
+tool: price_signal
+arguments: {}
+supports_claim_ids: None
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: explicit categories=['park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['claim-4']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'דיזנגוף 100, תל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['claim-4']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'categories': ['park']}
+
+call_id: tool-call-3
+tool_name: price_signal
+supports_claim_ids: ['claim-2']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "דיזנגוף 100, תל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "park"
+  ],
+  "radius_m": 500
+}
+
+price_signal (tool-call-3):
+  # unresolved dependency: geo_resolver did not produce a resolved address
+{
+  "normalized_address": {
+    "from_call": "tool-call-1",
+    "field": "normalized_address"
+  },
+  "neighborhood": {
+    "from_call": "tool-call-1",
+    "field": "neighborhood"
+  },
+  "listing_type": "purchase",
+  "asking_price": 4700000.0,
+  "area_sqm": 100.0
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: fake
+llm_calls: 1
+planner_duration_ms: 0.03
+planned_tool_calls_before_deduplication: 3
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 3
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 0.08
+
+SCENARIO SUMMARY
+----------------
+ID | Goal | Claims | Planned Tools | Executed Tools | Answerability | Result
+1 | general_listing_triage | 7 | geo_resolver,nearby_services,price_signal |  | n/a | PASS
+2 | family_suitability | 5 | geo_resolver,nearby_services |  | partially_verifiable | PASS
+3 | price_validation | 5 | geo_resolver,price_signal |  | verifiable | PASS
+4 | nearby_services_check | 3 | geo_resolver,nearby_services |  | verifiable | PASS
+5 | nearby_services_check | 4 | geo_resolver,nearby_services |  | partially_verifiable | PASS
+6 | nearby_services_check | 3 | geo_resolver,nearby_services |  | partially_verifiable | PASS
+7 | general_question | 3 |  |  | unsupported | PASS
+8 | price_validation | 4 |  |  | missing_information | PASS
+9 | nearby_services_check | 7 | geo_resolver,nearby_services |  | verifiable | PASS
+10 | general_question | 5 | geo_resolver,nearby_services,price_signal |  | verifiable | PASS

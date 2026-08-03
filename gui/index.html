@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tel Aviv Real Estate Listing Triage Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main>
+    <h1>Tel Aviv Real Estate Listing Triage Agent</h1>
+    <p class="subtitle">
+      Paste a Tel Aviv listing (plus an optional buyer question) and get a
+      grounded, evidence-based triage report in seconds.
+    </p>
+
+    <section class="examples" aria-label="Example prompts">
+      <span class="examples-label">Try an example:</span>
+      <button type="button" class="example-btn" data-example="family">Family suitability</button>
+      <button type="button" class="example-btn" data-example="price">Price validation</button>
+      <button type="button" class="example-btn" data-example="rental">Rental listing</button>
+    </section>
+
+    <form id="triage-form">
+      <label for="prompt">Listing details and question</label>
+      <textarea
+        id="prompt"
+        name="prompt"
+        rows="10"
+        placeholder="e.g. HaYarkon 120, Tel Aviv, 4 rooms, 90 sqm, asking 3,200,000 ILS. Is it suitable for a family with two kids?"
+        dir="auto"
+      ></textarea>
+      <button type="submit" id="run-button">Run Agent</button>
+    </form>
+
+    <p id="loading" class="loading" hidden>Running the agent&hellip;</p>
+
+    <p id="error" class="error" hidden></p>
+
+    <section id="result" class="result" hidden>
+      <h2>Agent response</h2>
+      <div id="response-text" class="response-text" dir="auto"></div>
+
+      <details id="steps-details">
+        <summary>Full steps trace</summary>
+        <ol id="steps-list" class="steps-list"></ol>
+      </details>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

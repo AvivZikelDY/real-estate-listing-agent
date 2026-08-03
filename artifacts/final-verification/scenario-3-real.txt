@@ -1,0 +1,162 @@
+=== SCENARIO 3 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים ברחוב דיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+question: האם המחיר נמוך ממחיר השוק?
+llm_mode: real
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: האם המחיר נמוך ממחיר השוק?
+goal: price_validation
+answerability: verifiable
+question_derived_claims:
+relevant_listing_claims:
+  - רחוב דיזנגוף 100 בתל אביב
+  - 100 מ"ר
+  - מחיר 4,700,000 ש"ח.
+  - Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)
+claims_ignored_not_relevant_to_question:
+  - דירת 4 חדרים
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: רחוב דיזנגוף 100 בתל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: c1
+text: דירת 4 חדרים
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: c2
+text: רחוב דיזנגוף 100 בתל אביב
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: c3
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: c4
+text: מחיר 4,700,000 ש"ח.
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: claim-derived-price-comparison
+text: Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable_but_not_checked
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: claim-derived-price-comparison
+text: Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)
+reason: rejected_by_plan_validation
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'רחוב דיזנגוף 100 בתל אביב'}
+supports_claim_ids: ['c2']
+
+tool: price_signal
+arguments: {'asking_price': 4700000, 'sqm': 100, 'address': 'רחוב דיזנגוף 100 בתל אביב'}
+supports_claim_ids: ['c4', 'c3']
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- No normalization or validation changes were needed.
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['c2']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'רחוב דיזנגוף 100 בתל אביב'}
+
+call_id: tool-call-2
+tool_name: price_signal
+supports_claim_ids: ['c4', 'c3']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'asking_price': 4700000, 'sqm': 100, 'address': 'רחוב דיזנגוף 100 בתל אביב'}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "רחוב דיזנגוף 100 בתל אביב",
+  "city_hint": "תל אביב"
+}
+
+price_signal (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce a resolved address
+{
+  "normalized_address": {
+    "from_call": "tool-call-1",
+    "field": "normalized_address"
+  },
+  "neighborhood": {
+    "from_call": "tool-call-1",
+    "field": "neighborhood"
+  },
+  "listing_type": "purchase",
+  "asking_price": 4700000.0,
+  "area_sqm": 100.0
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: real
+llm_calls: 1
+planner_duration_ms: 30617.85
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 30618.18
+

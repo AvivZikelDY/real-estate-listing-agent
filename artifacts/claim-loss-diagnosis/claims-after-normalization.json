@@ -1,0 +1,98 @@
+[
+  {
+    "id": "c1",
+    "text": "גונן 14",
+    "type": "factual",
+    "category": "address",
+    "source": null,
+    "canonical_category": "address"
+  },
+  {
+    "id": "c2",
+    "text": "נכס עם ממ״ד",
+    "type": "factual",
+    "category": "condition",
+    "source": null,
+    "canonical_category": "condition"
+  },
+  {
+    "id": "c3",
+    "text": "דירה, תל חייים, תל אביב יפו",
+    "type": "factual",
+    "category": "address",
+    "source": null,
+    "canonical_category": "address"
+  },
+  {
+    "id": "c4",
+    "text": "5 חדרים",
+    "type": "factual",
+    "category": "rooms",
+    "source": null,
+    "canonical_category": "rooms"
+  },
+  {
+    "id": "c5",
+    "text": "קומה 5/6",
+    "type": "factual",
+    "category": null,
+    "source": null,
+    "canonical_category": null
+  },
+  {
+    "id": "c6",
+    "text": "123 מ״ר",
+    "type": "factual",
+    "category": "size_sqm",
+    "source": null,
+    "canonical_category": "size_sqm"
+  },
+  {
+    "id": "c7",
+    "text": "דירה חדשה למסירה ברחוב גונן הירוק והמתחדש.",
+    "type": "factual",
+    "category": "condition",
+    "source": null,
+    "canonical_category": "condition"
+  },
+  {
+    "id": "c8",
+    "text": "דירה משודרגת, מטבח מפנק של מטבחי אניס, ומקלחות משודרגות,",
+    "type": "subjective",
+    "category": "condition",
+    "source": null,
+    "canonical_category": "condition"
+  },
+  {
+    "id": "c9",
+    "text": "פרקט בחדרים שיורכב לאחר המסירה.",
+    "type": "factual",
+    "category": "condition",
+    "source": null,
+    "canonical_category": "condition"
+  },
+  {
+    "id": "c10",
+    "text": "נוף ירוק ופתוח, מתחם גני ילדים מעובר לכביש והמון חנייה ברחוב.",
+    "type": "factual",
+    "category": "nearby_amenities",
+    "source": null,
+    "canonical_category": "nearby_amenities"
+  },
+  {
+    "id": "c11",
+    "text": "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר.",
+    "type": "factual",
+    "category": null,
+    "source": null,
+    "canonical_category": null
+  },
+  {
+    "id": "c12",
+    "text": "4,350,000 ₪",
+    "type": "factual",
+    "category": "price",
+    "source": null,
+    "canonical_category": "price"
+  }
+]

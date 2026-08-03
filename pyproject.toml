@@ -1,0 +1,48 @@
+[project]
+name = "listing-agent"
+version = "0.1.0"
+description = "Tel Aviv Real Estate Listing Triage Agent"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "httpx",
+    "jinja2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "pillow",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's `Depends(...)` in a function default is the documented,
+# idiomatic dependency-injection pattern - not the mutable-default-argument
+# bug B008 warns about.
+"src/listing_agent/api/routes.py" = ["B008"]
+
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

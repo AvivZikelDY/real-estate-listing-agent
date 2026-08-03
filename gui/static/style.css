@@ -1,0 +1,147 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 720px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+  color: #222;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: #555;
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+}
+
+.examples {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.examples-label {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.example-btn {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #333;
+}
+
+.example-btn:hover {
+  background: #e0e7ff;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 0.75rem;
+  font-family: inherit;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+button#run-button {
+  align-self: flex-start;
+  background: #4338ca;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button#run-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.loading {
+  color: #4338ca;
+  font-style: italic;
+}
+
+.error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.result {
+  margin-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 1.5rem;
+}
+
+.response-text {
+  white-space: pre-wrap;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+#steps-details {
+  margin-top: 1.25rem;
+}
+
+#steps-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.steps-list {
+  padding-left: 1.25rem;
+}
+
+.step-item {
+  margin-bottom: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.step-item h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.step-item pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}

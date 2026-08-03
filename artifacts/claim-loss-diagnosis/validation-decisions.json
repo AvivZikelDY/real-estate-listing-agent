@@ -1,0 +1,58 @@
+{
+  "MAX_CLAIMS": 8,
+  "MAX_TOOL_CALLS": 3,
+  "raw_json_claim_count": 12,
+  "parsed_claim_count": 12,
+  "parsing_dropped_count": 0,
+  "capped_claim_count": 8,
+  "removed_by_cap": [
+    {
+      "id": "c9",
+      "text": "פרקט בחדרים שיורכב לאחר המסירה.",
+      "type": "factual",
+      "category": "condition",
+      "source": null,
+      "original_index": 8,
+      "canonical_category": "condition"
+    },
+    {
+      "id": "c10",
+      "text": "נוף ירוק ופתוח, מתחם גני ילדים מעובר לכביש והמון חנייה ברחוב.",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "source": null,
+      "original_index": 9,
+      "canonical_category": "nearby_amenities"
+    },
+    {
+      "id": "c11",
+      "text": "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר.",
+      "type": "factual",
+      "category": null,
+      "source": null,
+      "original_index": 10,
+      "canonical_category": null
+    },
+    {
+      "id": "c12",
+      "text": "4,350,000 ₪",
+      "type": "factual",
+      "category": "price",
+      "source": null,
+      "original_index": 11,
+      "canonical_category": "price"
+    }
+  ],
+  "cap_recorded_missing_information": [
+    "additional_claims_truncated"
+  ],
+  "buyer_goal": "fast_claim_triage",
+  "raw_tool_calls": [],
+  "validated_tool_calls": [],
+  "validated_missing_information": [
+    "additional_claims_truncated"
+  ],
+  "derived_claims_added_by_validator": [],
+  "nearby_services_synthesis_applicable": true,
+  "price_comparison_derivation_applicable": false
+}

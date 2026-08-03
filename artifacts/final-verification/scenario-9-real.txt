@@ -1,0 +1,177 @@
+=== SCENARIO 9 ===
+
+1. INPUT
+-------
+listing: דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+100 מ"ר, מחיר 4,700,000 ש"ח.
+קרובה לבתי ספר, גנים ופארקים.
+מחיר מציאה מתחת למחיר השוק.
+question: מעניין אותי רק אם יש פארק קרוב.
+llm_mode: real
+stage: planner
+
+2. USER QUESTION ANALYSIS
+-------------------------
+question: מעניין אותי רק אם יש פארק קרוב.
+goal: nearby_services_check
+answerability: verifiable
+question_derived_claims:
+relevant_listing_claims:
+  - דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+  - קרובה לבית ספר, גנים ופארקים.
+claims_ignored_not_relevant_to_question:
+  - דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+  - 100 מ"ר
+  - מחיר 4,700,000 ש"ח.
+  - מחיר מציאה מתחת למחיר השוק.
+
+3. EXTRACTED LISTING FACTS
+--------------------------
+listing_type: purchase
+raw_address: בדיזנגוף 100 בתל אביב
+asking_price: 4700000.0
+rooms: 4.0
+sqm: 100.0
+
+4. IDENTIFIED CLAIMS
+--------------------
+claim_id: c1
+text: דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+type: factual
+category: rooms
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+
+claim_id: c2
+text: דירת 4 חדרים בדיזנגוף 100 בתל אביב.
+type: factual
+category: address
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+
+claim_id: c3
+text: 100 מ"ר
+type: factual
+category: size_sqm
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: c4
+text: מחיר 4,700,000 ש"ח.
+type: factual
+category: price
+source: listing
+verifiability: listing_fact
+relevant_to_question: False
+proposed_tools:
+  - price_signal
+
+claim_id: c5
+text: קרובה לבית ספר, גנים ופארקים.
+type: factual
+category: nearby_amenities
+source: listing
+verifiability: verifiable
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - nearby_services
+
+claim_id: c6
+text: מחיר מציאה מתחת למחיר השוק.
+type: factual
+category: price_comparison
+source: listing
+verifiability: verifiable_but_not_checked
+relevant_to_question: False
+proposed_tools:
+  - geo_resolver
+  - price_signal
+
+5. CLAIMS NOT SENT TO TOOLS
+---------------------------
+claim_id: c6
+text: מחיר מציאה מתחת למחיר השוק.
+reason: rejected_by_plan_validation
+
+6. RAW PLANNER TOOL CALLS
+-------------------------
+tool: geo_resolver
+arguments: {'address': 'בדיזנגוף 100 בתל אביב'}
+supports_claim_ids: ['c2', 'c5']
+
+tool: nearby_services
+arguments: {'address': 'בדיזנגוף 100 בתל אביב', 'service_type': 'park'}
+supports_claim_ids: ['c5']
+
+7. NORMALIZATION AND VALIDATION DECISIONS
+-----------------------------------------
+- nearby_services retained: query='park' normalized to categories=['park'].
+
+8. FINAL VALIDATED TOOL PLAN
+----------------------------
+call_id: tool-call-1
+tool_name: geo_resolver
+supports_claim_ids: ['c2', 'c5']
+depends_on: []
+execution_stage: 1
+merged_from_duplicates: False
+planner_arguments: {'address': 'בדיזנגוף 100 בתל אביב'}
+
+call_id: tool-call-2
+tool_name: nearby_services
+supports_claim_ids: ['c5']
+depends_on: ['tool-call-1']
+execution_stage: 2
+merged_from_duplicates: False
+planner_arguments: {'address': 'בדיזנגוף 100 בתל אביב', 'service_type': 'park'}
+
+9. PREPARED TOOL INPUTS
+-----------------------
+geo_resolver (tool-call-1):
+{
+  "address": "בדיזנגוף 100 בתל אביב",
+  "city_hint": "תל אביב"
+}
+
+nearby_services (tool-call-2):
+  # unresolved dependency: geo_resolver did not produce resolved coordinates
+{
+  "lat": {
+    "from_call": "tool-call-1",
+    "field": "lat"
+  },
+  "lon": {
+    "from_call": "tool-call-1",
+    "field": "lon"
+  },
+  "categories": [
+    "park"
+  ],
+  "radius_m": 500
+}
+
+12. DIAGNOSTICS
+--------------
+llm_mode: real
+llm_calls: 1
+planner_duration_ms: 67409.29
+planned_tool_calls_before_deduplication: 2
+tools_mode: mock
+mcp_called: False
+external_provider_called: False
+report_writer_called: False
+validation_status: accepted
+planned_tool_calls_after_deduplication: 2
+tools_executed: []
+evidence_bundle_item_count: 0
+total_pipeline_duration_ms: 67409.52
+
