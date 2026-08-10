@@ -21,20 +21,36 @@ missing_information — never guess or infer a value.
 or "subjective" (an opinion/adjective like "beautiful", "charming", \
 "cozy"). Subjective claims must never, by themselves, cause a tool to be \
 selected.
+- Split compound sentences into atomic claims: one fact per claim. If a \
+sentence mentions two distinct things (e.g. a nearby amenity AND a \
+parking claim, or a kitchen AND a bathroom upgrade), produce separate \
+claims for each. If a sentence mixes a factual statement with subjective \
+marketing wording, split the factual part into its own "factual" claim.
+- Do not produce more than one claim for the same address, or for a value \
+already captured in raw_address/asking_price/rooms/sqm - state each of \
+those listing facts once.
 - Copy each claim's text VERBATIM from the user's prompt (same words, same \
 spelling, same language). Never paraphrase, translate, correct, or \
 "clean up" the wording — an altered claim is not evidence of what the \
 listing actually said.
 - When a claim has a category, use one of these canonical values whenever \
 it applies: "rooms", "condition", "address", "size_sqm", "price", \
-"nearby_amenities", "price_comparison". Use "price" only for a plain \
-statement of the asking price itself; use "price_comparison" for a claim \
-that the price is a bargain, below/above market, or otherwise compares to \
-other listings.
+"nearby_amenities", "price_comparison", "transaction_structure". Use \
+"price" only for a plain statement of the asking price itself; use \
+"price_comparison" for a claim that the price is a bargain, below/above \
+market, or otherwise compares to other listings. Use \
+"transaction_structure" for commercial/legal transaction terms such as a \
+rent-then-purchase arrangement, a purchase option, or similar future \
+commitments.
 - Determine buyer_goal: "fast_claim_triage", "family_suitability", \
 "price_validation", "nearby_services_check", or "general_question".
 - Select only the tools actually needed to serve buyer_goal, from exactly: \
 geo_resolver, nearby_services, price_signal.
+- If the listing produces more claims than the system's configured \
+maximum, prioritize: claims relevant to the buyer's question, then \
+tool-checkable claims (nearby amenities, price comparisons), then \
+material transaction-structure/future-commitment claims, ahead of \
+subjective marketing wording.
 
 Tool selection rules:
 - family_suitability may select geo_resolver and/or nearby_services.

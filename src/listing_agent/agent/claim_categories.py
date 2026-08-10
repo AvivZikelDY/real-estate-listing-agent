@@ -42,9 +42,26 @@ CanonicalClaimCategory = Literal[
     "price",
     "nearby_amenities",
     "price_comparison",
+    "transaction_structure",
 ]
 
 ClaimClassification = Literal["subjective", "listing_fact", "verifiable", "unsupported"]
+
+# The Pre-Tool Triage verification-decision vocabulary (see
+# `docs/pre_tool_triage.md`). Distinct from - and richer than -
+# `ClaimClassification` above (which only drives tool linkage): this is the
+# buyer-facing semantic bucket every retained claim must fall into so the
+# Pre-Tool Triage output can group claims by what would actually resolve
+# them (a tool call vs. asking the seller vs. reading the contract), not
+# merely whether a tool happens to exist today.
+VerificationDecision = Literal[
+    "LISTING_FACT",
+    "CHECKABLE_WITH_TOOL",
+    "REQUIRES_SELLER_OR_DOCUMENT",
+    "REQUIRES_CONTRACT_REVIEW",
+    "SUBJECTIVE",
+    "OUT_OF_SCOPE",
+]
 
 # Every raw category spelling `triage_planner` has been observed to emit
 # (across different runs/prompts), normalized to one canonical category.
@@ -88,6 +105,16 @@ _CATEGORY_ALIASES: dict[str, CanonicalClaimCategory] = {
     "value": "price_comparison",
     "market": "price_comparison",
     "cost": "price_comparison",
+    # transaction structure (contractual/commercial terms - no current
+    # tool verifies these; distinct from "condition", never merged with
+    # it just because both are "factual, no matching tool" claims).
+    "transaction_structure": "transaction_structure",
+    "transaction": "transaction_structure",
+    "rent_to_own": "transaction_structure",
+    "rent_then_purchase": "transaction_structure",
+    "purchase_option": "transaction_structure",
+    "lease_option": "transaction_structure",
+    "sale_terms": "transaction_structure",
 }
 
 # Canonical categories that are listing facts (seller-provided data used as
@@ -148,11 +175,65 @@ def classify_claim(claim: Claim) -> ClaimClassification:
     return "unsupported"
 
 
+# Canonical categories that describe commercial/legal transaction terms -
+# materially important to the buyer, but never routed through a current
+# tool (geo/nearby/price). Kept separate from `_LISTING_FACT_CATEGORIES`
+# and `TOOLS_BY_VERIFIABLE_CATEGORY` on purpose: neither a "tool consumes
+# this as input" fact nor a "a tool can verify this" claim.
+_CONTRACT_REVIEW_CATEGORIES: frozenset[CanonicalClaimCategory] = frozenset(
+    {"transaction_structure"}
+)
+
+
+def verification_decision(claim: Claim) -> VerificationDecision:
+    """Classify `claim` into the Pre-Tool Triage's `VerificationDecision`
+    vocabulary (see `docs/pre_tool_triage.md` §4).
+
+    Distinct from (and more granular than) `classify_claim`/
+    `ClaimClassification`, which only distinguishes what feeds/answers a
+    tool call. This additionally separates:
+
+    - `"REQUIRES_CONTRACT_REVIEW"` - commercial/legal transaction terms
+      (e.g. rent-then-purchase) that no current tool checks, but that
+      must never be silently folded into a generic "unsupported" bucket;
+    - `"REQUIRES_SELLER_OR_DOCUMENT"` - a physical/document fact (safe
+      room, floor, kitchen spec, future installation commitment) with no
+      current tool, but still independently verifiable by asking the
+      seller or reading a document/plan;
+    - `"OUT_OF_SCOPE"` - a factual claim with no canonical category and no
+      seller/document verification path either (rare; a genuine catch-all).
+
+    Never derived from raw listing text, only from `claim.type` and its
+    already-normalized canonical category - deterministic and reused by
+    every consumer (report, diagnostics, Pre-Tool Triage) instead of each
+    reimplementing its own bucket logic.
+    """
+    if claim.type == "subjective":
+        return "SUBJECTIVE"
+
+    canonical = normalize_category(claim.category)
+    if canonical in TOOLS_BY_VERIFIABLE_CATEGORY:
+        return "CHECKABLE_WITH_TOOL"
+    if canonical in _LISTING_FACT_CATEGORIES:
+        return "LISTING_FACT"
+    if canonical in _CONTRACT_REVIEW_CATEGORIES:
+        return "REQUIRES_CONTRACT_REVIEW"
+    if canonical == "condition" or canonical is None:
+        # A factual claim with no matching tool (safe room, floor,
+        # upgraded kitchen/bathroom, future-installation commitments) is
+        # still a real, checkable-by-other-means fact - never treat it as
+        # equivalent to "out of scope".
+        return "REQUIRES_SELLER_OR_DOCUMENT"
+    return "OUT_OF_SCOPE"
+
+
 __all__ = [
     "CanonicalClaimCategory",
     "ClaimClassification",
     "LISTING_FACT_INPUT_TOOLS",
     "TOOLS_BY_VERIFIABLE_CATEGORY",
+    "VerificationDecision",
     "classify_claim",
     "normalize_category",
+    "verification_decision",
 ]

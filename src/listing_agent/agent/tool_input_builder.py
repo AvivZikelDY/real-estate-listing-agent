@@ -64,6 +64,15 @@ _NEARBY_CATEGORY_ALIASES: dict[str, NearbyServiceCategory] = {
     "גן": "daycare",
     "גנים": "daycare",
     "גן ילדים": "daycare",
+    # "גני" (regular, non-final nun) is the construct/plural-construct form
+    # used in phrases like "מתחם גני ילדים" ("kindergarten complex") -
+    # distinct from "גן" (final nun), which never matches as a substring of
+    # "גני" because Hebrew uses different letter forms word-finally vs.
+    # mid-word.
+    "גני": "daycare",
+    "גני ילדים": "daycare",
+    "מעון": "daycare",
+    "מעון יום": "daycare",
     "park": "park",
     "parks": "park",
     "פארק": "park",
@@ -276,11 +285,16 @@ def extract_nearby_categories_argument(arguments: dict[str, object]) -> object:
 
 
 def _linked_nearby_claim_text(call: ToolCall, claims: list[Claim] | None) -> str | None:
-    """Return the text of the claim `call` is linked to, if any.
+    """Return the combined text of every claim `call` is linked to, if any.
 
-    Prefers an explicit `call.supports_claim_ids` match (tier 1, same
-    priority `evidence_mapper.claim_linking` uses); otherwise falls back
-    to the first claim in `claims` already classified with the canonical
+    Prefers explicit `call.supports_claim_ids` matches (tier 1, same
+    priority `evidence_mapper.claim_linking` uses) - combining *all* of
+    them, not just the first, since a single `nearby_services` call may
+    legitimately support several atomized `nearby_amenities` claims (e.g.
+    "green view" + "kindergarten complex" + "street parking" split from
+    one compound sentence) and only the combined text reliably recovers
+    every mentioned category. Otherwise falls back to combining every
+    claim in `claims` already classified with the canonical
     `"nearby_amenities"` category. Returns `None` (never guesses) when
     `claims` is not supplied or nothing matches.
     """
@@ -289,16 +303,16 @@ def _linked_nearby_claim_text(call: ToolCall, claims: list[Claim] | None) -> str
 
     if call.supports_claim_ids:
         by_id = {claim.id: claim for claim in claims if claim.id}
-        for claim_id in call.supports_claim_ids:
-            claim = by_id.get(claim_id)
-            if claim is not None:
-                return claim.text
+        matched_texts = [
+            by_id[claim_id].text for claim_id in call.supports_claim_ids if claim_id in by_id
+        ]
+        if matched_texts:
+            return " ".join(matched_texts)
 
-    for claim in claims:
-        if normalize_category(claim.category) == "nearby_amenities":
-            return claim.text
-
-    return None
+    nearby_texts = [
+        claim.text for claim in claims if normalize_category(claim.category) == "nearby_amenities"
+    ]
+    return " ".join(nearby_texts) if nearby_texts else None
 
 
 def build_tool_input(
