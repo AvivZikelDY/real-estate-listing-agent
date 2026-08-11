@@ -11,10 +11,20 @@ It is a *signal*, never a valuation — see `_APPRAISAL_LIMITATION`.
 
 WHERE THE DATA COMES FROM
 -------------------------
-Real transactions published by the Israeli government via the govmap API.
-Right now they are read from a pre-fetched snapshot committed next to this
-file rather than fetched live; the reason, and the one-line switch to go
-live, are marked `SWAP:` inside `execute()`.
+Real transactions published by the Israeli government via the govmap API,
+queried LIVE on each request: four HTTP calls, ~0.7s, against the 8s
+`LocalToolExecutor` ceiling.
+
+The comparables are the deals recorded for the address's OWN land parcel's
+street and neighbourhood. That is correct by construction — the parcel
+belongs to exactly one neighbourhood, so there is no way for two
+neighbourhoods to be blended into one median. See
+`GovmapClient.find_polygon_for_address`.
+
+If govmap is unreachable, the tool degrades to a committed offline extract
+(`comparables_snapshot.json`) rather than failing, and says so in
+`limitations`. An EMPTY live answer is not a failure and does not trigger
+the fallback — see `_fetch_comparables`.
 
 THE RESULT CONTRACT (docs/nir_handoff.md)
 -----------------------------------------
@@ -40,10 +50,7 @@ from typing import Any
 
 from src.listing_agent.tools.nir_implementations.govmap_client import (
     ComparableDeal,
-    # Unused until the SWAP block in `execute()` is uncommented. Kept
-    # imported so going live is a one-line change and so the live client
-    # stays visibly part of this tool's design.
-    GovmapClient,  # noqa: F401
+    GovmapClient,
 )
 from src.listing_agent.tools.schemas import PriceSignalInput, PriceSignalOutput, ToolResult
 
@@ -53,7 +60,8 @@ logger = logging.getLogger(__name__)
 # instead, so they never depend on the real file's contents.
 DEFAULT_SNAPSHOT_PATH = Path(__file__).parent / "comparables_snapshot.json"
 
-_SOURCE = "govmap.gov.il (Israeli government real-estate transactions)"
+_SOURCE = "govmap.gov.il (Israeli government real-estate transactions, live)"
+_FALLBACK_SOURCE = "govmap.gov.il (Israeli government real-estate transactions, offline extract)"
 
 # Required by the contract on every single result, whatever the outcome.
 _APPRAISAL_LIMITATION = (
@@ -214,10 +222,22 @@ class NirPriceSignal:
     # tool up by this string (`tools/registry.py`).
     name = "price_signal"
 
-    def __init__(self, snapshot_path: Path = DEFAULT_SNAPSHOT_PATH) -> None:
-        # Injectable so tests can point at a fixture instead of the
-        # committed file, and so a corrupt-file test is easy to write.
+    def __init__(
+        self,
+        snapshot_path: Path = DEFAULT_SNAPSHOT_PATH,
+        client_factory: type[GovmapClient] | None = GovmapClient,
+    ) -> None:
+        """
+        Args:
+            snapshot_path: Committed comparables file used as the fallback.
+                Injectable so tests use a fixture, never the real file.
+            client_factory: Builds the live govmap client. Injectable so
+                tests can supply a stub and never touch the network; pass
+                `None` to disable the live path entirely and read only the
+                snapshot.
+        """
         self._snapshot = ComparablesSnapshot(snapshot_path)
+        self._client_factory = client_factory
 
     async def execute(self, input_model: PriceSignalInput) -> ToolResult[PriceSignalOutput]:
         """Run the price comparison.
@@ -254,51 +274,17 @@ class NirPriceSignal:
                 return self._insufficient_data(missing_fields)
 
             # --- 3. Fetch comparable transactions --------------------------
-            #
-            # SWAP: the live path is written and verified, but not enabled.
-            #
-            # It is fast enough: a measured 2.6-2.9s per address, against
-            # the 8s `LocalToolExecutor` ceiling (local.py:36). The offline
-            # snapshot is preferred anyway for determinism in tests and for
-            # not making every request depend on a free public API being
-            # up. See the module docstring of `govmap_client.py`.
-            #
-            # To go live: uncomment the two lines below, then delete the
-            # snapshot line beneath them. Nothing else changes — both paths
-            # return the same `ComparableDeal` objects.
-            #
-            # The scoping arguments are not optional extras: a search
-            # radius straddles neighbourhood boundaries, and unscoped
-            # results blend two markets into one median. Measured at
-            # "אילת 30": unscoped median 52,500/sqm vs scoped 59,688 — a
-            # 14% error. `include_own_street` then adds back sales on the
-            # address's own street where it runs past the boundary.
-            #
-            # async with GovmapClient() as client:
-            #     deals = await client.find_comparable_deals(
-            #         input_model.normalized_address,
-            #         only_neighborhood=input_model.neighborhood,
-            #         include_own_street=True,
-            #     )
-            #
-            # >>> OFFLINE LIMITATION <<< the snapshot below implements only
-            # the neighbourhood half of that rule. Its buckets are keyed by
-            # neighbourhood, so they cannot carry "the street of the
-            # address" — there is no single address at build time. The
-            # street clause only takes effect once the live path is on.
-            deals = self._snapshot.lookup(
-                input_model.neighborhood,  # preferred key, from geo_resolver
-                input_model.normalized_address,  # fallback when no neighbourhood is known
-            )
+            # Live first, committed snapshot only if govmap is unreachable.
+            deals, used_fallback = await self._fetch_comparables(input_model)
 
             # --- 4. Nothing to compare against -----------------------------
             # Note this is a successful run: we checked honestly and the
             # area has no usable sales.
             if not deals:
-                return self._no_comparable_data(input_model)
+                return self._no_comparable_data(input_model, used_fallback)
 
             # --- 5. Compute the signal -------------------------------------
-            return self._compare(input_model, deals)
+            return self._compare(input_model, deals, used_fallback)
 
         except Exception as exc:
             # Last-resort safety net. A missing/corrupt snapshot file, or
@@ -309,6 +295,57 @@ class NirPriceSignal:
                 status="error",
                 error=f"price_signal could not complete: {type(exc).__name__}: {exc}",
             )
+
+    # --- data sourcing -----------------------------------------------------
+
+    async def _fetch_comparables(
+        self, input_model: PriceSignalInput
+    ) -> tuple[list[ComparableDeal], bool]:
+        """Get comparable transactions, live if possible.
+
+        THE FALLBACK RULE, and why it is drawn where it is:
+
+          * A TECHNICAL failure — govmap unreachable, timing out, rate
+            limiting — falls back to the committed snapshot. Stale data
+            beats no answer, and the staleness is disclosed.
+          * An EMPTY live result does NOT fall back. govmap answering "there
+            are no recorded sales here" is a real answer, and quietly
+            substituting snapshot data for a different area would turn an
+            honest "no data" into a confident wrong number.
+
+        Returns:
+            A `(deals, used_fallback)` tuple. `used_fallback` drives the
+            disclosure in `limitations`, so a reader always knows whether
+            they are looking at live records or a point-in-time extract.
+        """
+        if self._client_factory is not None:
+            try:
+                async with self._client_factory() as client:
+                    # Four calls, ~0.7s. No neighbourhood filtering needed:
+                    # the client locates the address's own land parcel, so
+                    # the deals are its own neighbourhood by construction.
+                    return await client.find_comparable_deals(
+                        input_model.normalized_address
+                    ), False
+            except Exception:
+                # Deliberately broad: ANY failure reaching govmap should
+                # degrade to the snapshot rather than fail the tool. The
+                # typed errors raised by the client are included here.
+                logger.warning(
+                    "Live govmap lookup failed for %r; falling back to the "
+                    "committed snapshot",
+                    input_model.normalized_address,
+                    exc_info=True,
+                )
+
+        # Snapshot fallback, keyed by neighbourhood then address.
+        return (
+            self._snapshot.lookup(
+                input_model.neighborhood,  # preferred key, from geo_resolver
+                input_model.normalized_address,  # when no neighbourhood is known
+            ),
+            True,
+        )
 
     # --- result builders ---------------------------------------------------
 
@@ -328,25 +365,31 @@ class NirPriceSignal:
             ),
         )
 
-    def _no_comparable_data(self, input_model: PriceSignalInput) -> ToolResult[PriceSignalOutput]:
+    def _no_comparable_data(
+        self, input_model: PriceSignalInput, used_fallback: bool
+    ) -> ToolResult[PriceSignalOutput]:
         """We have the listing's numbers, but no sales to compare them to."""
         lookup_key = input_model.neighborhood or input_model.normalized_address
+        limitations = [
+            f"No comparable transactions available for '{lookup_key}'.",
+            _APPRAISAL_LIMITATION,
+        ]
+        limitations.extend(self._source_limitations(used_fallback))
         return ToolResult(
             status="ok",
             data=PriceSignalOutput(
                 outcome="no_comparable_data",
                 comparison_count=0,
-                source=_SOURCE,
-                limitations=[
-                    f"No comparable transactions available for '{lookup_key}'.",
-                    _APPRAISAL_LIMITATION,
-                    self._snapshot_limitation(),
-                ],
+                source=self._source_name(used_fallback),
+                limitations=limitations,
             ),
         )
 
     def _compare(
-        self, input_model: PriceSignalInput, deals: list[ComparableDeal]
+        self,
+        input_model: PriceSignalInput,
+        deals: list[ComparableDeal],
+        used_fallback: bool = False,
     ) -> ToolResult[PriceSignalOutput]:
         """Turn a set of comparable transactions into the price signal.
 
@@ -369,7 +412,7 @@ class NirPriceSignal:
         ]
         if len(usable) < _MIN_TOTAL_COMPARABLES:
             # Too thin to publish a median. Honest "no answer", not an error.
-            return self._no_comparable_data(input_model)
+            return self._no_comparable_data(input_model, used_fallback)
 
         # Drop stale sales next, before the size band, so recency is never
         # traded away to satisfy the size filter.
@@ -416,7 +459,7 @@ class NirPriceSignal:
             limitations.append(f"Transactions span {dated[0]} to {dated[-1]}.")
 
         limitations.append(_APPRAISAL_LIMITATION)
-        limitations.append(self._snapshot_limitation())
+        limitations.extend(self._source_limitations(used_fallback))
 
         return ToolResult(
             status="ok",
@@ -428,7 +471,7 @@ class NirPriceSignal:
                 reference_range_high_per_sqm=round(high, 2),
                 deviation_percent=round(deviation_percent, 2),
                 comparison_count=len(comparables),
-                source=_SOURCE,
+                source=self._source_name(used_fallback),
                 limitations=limitations,
             ),
         )
@@ -491,15 +534,23 @@ class NirPriceSignal:
         high_index = min(n - 1, int(round(0.90 * (n - 1))))
         return sorted_prices[low_index], sorted_prices[high_index]
 
-    def _snapshot_limitation(self) -> str:
-        """Disclose that the figures are a point-in-time extract.
+    @staticmethod
+    def _source_name(used_fallback: bool) -> str:
+        """Name the data source honestly, per result."""
+        return _FALLBACK_SOURCE if used_fallback else _SOURCE
 
-        Required honesty while the offline path is active: the reader must
-        not take a months-old snapshot for today's market. Delete this
-        alongside the snapshot when the live path is enabled.
+    def _source_limitations(self, used_fallback: bool) -> list[str]:
+        """Disclose which source actually answered.
+
+        This is not decoration. When the live lookup fails we silently
+        degrade to months-old data, and a reader comparing an asking price
+        against it deserves to know that is what happened — otherwise a
+        stale median reads exactly like a current one.
         """
-        return (
-            f"Comparison data is a point-in-time extract of government transaction "
-            f"records taken on {self._snapshot.generated_at}, not a live query, so it "
-            "may not reflect the most recent sales."
-        )
+        if not used_fallback:
+            return []
+        return [
+            f"Live government data was unavailable, so this comparison uses an offline "
+            f"extract taken on {self._snapshot.generated_at}. It covers a limited set of "
+            "Tel Aviv neighbourhoods and may not reflect the most recent sales."
+        ]

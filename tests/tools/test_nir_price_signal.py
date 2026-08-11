@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from src.listing_agent.tools.base import BaseTool
+from src.listing_agent.tools.nir_implementations.govmap_client import ComparableDeal
 from src.listing_agent.tools.nir_implementations.price_signal import (
     DEFAULT_SNAPSHOT_PATH,
     NirPriceSignal,
@@ -22,6 +23,46 @@ from src.listing_agent.tools.registry import ToolRegistry
 from src.listing_agent.tools.schemas import PriceSignalInput
 
 _ADDRESS = "רוטשילד 30 תל אביב"
+
+
+class _DeadGovmap:
+    """A govmap client that always fails, forcing the snapshot fallback.
+
+    Most tests here exercise the price maths and the snapshot, so they use
+    this to make the live path fail deterministically and offline. The live
+    path has its own dedicated tests below.
+    """
+
+    async def __aenter__(self) -> "_DeadGovmap":
+        raise ConnectionError("govmap is unreachable (test stub)")
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+
+class _LiveGovmap:
+    """A govmap client returning canned deals, with no network access."""
+
+    deals: list[ComparableDeal] = []
+
+    async def __aenter__(self) -> "_LiveGovmap":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+    async def find_comparable_deals(self, address: str) -> list[ComparableDeal]:
+        type(self).last_address = address
+        return self.deals
+
+
+def _live(deals: list[ComparableDeal]) -> type[_LiveGovmap]:
+    """Build a fresh live-stub class so tests never share state."""
+    return type("_Live", (_LiveGovmap,), {"deals": deals, "last_address": None})
+
+
+def _comparable(price: float, area: float, date: str = "2026-01-15T00:00:00.000Z"):
+    return ComparableDeal(price=price, area_sqm=area, rooms=3, deal_date=date, street="רוטשילד")
 
 
 def _write_snapshot(tmp_path: Path, deals: list[dict], aliases: list[str] | None = None) -> Path:
@@ -67,7 +108,9 @@ async def test_purchase_listing_returns_compared_with_correct_math(tmp_path: Pat
     # Five deals, all 100 sqm, priced so price-per-sqm is exactly
     # 40k, 45k, 50k, 55k, 60k. Median is therefore exactly 50,000.
     deals = [_deal(price * 100, 100) for price in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     # Listing: 5,500,000 for 100 sqm -> 55,000/sqm, i.e. 10% above the median.
     result = await tool.execute(
@@ -97,7 +140,9 @@ async def test_purchase_listing_returns_compared_with_correct_math(tmp_path: Pat
 async def test_compared_result_always_discloses_it_is_not_an_appraisal(tmp_path: Path) -> None:
     """The appraisal disclaimer is mandatory on every result (handoff:167)."""
     deals = [_deal(p * 100, 100) for p in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -112,15 +157,18 @@ async def test_compared_result_always_discloses_it_is_not_an_appraisal(tmp_path:
     assert result.data is not None
     limitations_text = " ".join(result.data.limitations).lower()
     assert "not a professional or certified appraisal" in limitations_text
-    # And that the figures are a point-in-time extract, not live data.
-    assert "point-in-time" in limitations_text
+    # This test runs on the snapshot fallback, so it must also disclose
+    # that live data was unavailable and these figures are an extract.
+    assert "live government data was unavailable" in limitations_text
 
 
 @pytest.mark.asyncio
 async def test_underpriced_listing_reports_negative_deviation(tmp_path: Path) -> None:
     """A listing below the local median must read as a negative deviation."""
     deals = [_deal(p * 100, 100) for p in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     # 4,000,000 for 100 sqm -> 40,000/sqm, 20% below the 50,000 median.
     result = await tool.execute(
@@ -137,12 +185,189 @@ async def test_underpriced_listing_reports_negative_deviation(tmp_path: Path) ->
     assert result.data.deviation_percent == pytest.approx(-20.0)
 
 
+# --- The live path and the snapshot fallback -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_live_data_is_used_when_govmap_answers(tmp_path: Path) -> None:
+    """Live is the primary source; the snapshot must not be consulted.
+
+    The snapshot fixture here holds deliberately different numbers, so a
+    wrong median would prove the fallback had been used by mistake.
+    """
+    live_deals = [_comparable(p * 100, 100) for p in (60_000, 62_000, 64_000, 66_000, 68_000)]
+    snapshot_deals = [_deal(p * 100, 100) for p in (10_000, 11_000, 12_000, 13_000, 14_000)]
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, snapshot_deals),
+        client_factory=_live(live_deals),
+    )
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            neighborhood="Lev HaIr",
+            listing_type="purchase",
+            asking_price=6_400_000,
+            area_sqm=100,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.data is not None
+    assert result.data.outcome == "compared"
+    # The live median, not the snapshot's 12,000.
+    assert result.data.median_comparison_price_per_sqm == pytest.approx(64_000)
+    assert "live" in result.data.source
+    # Nothing to disclose about staleness when the data is live.
+    assert not any("unavailable" in lim for lim in result.data.limitations)
+
+
+@pytest.mark.asyncio
+async def test_live_lookup_receives_the_normalized_address(tmp_path: Path) -> None:
+    """The client locates the address's own parcel, so it needs the address."""
+    stub = _live([_comparable(p * 100, 100) for p in (60_000, 62_000, 64_000)])
+    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, []), client_factory=stub)
+
+    await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            listing_type="purchase",
+            asking_price=6_400_000,
+            area_sqm=100,
+        )
+    )
+
+    assert stub.last_address == _ADDRESS
+
+
+@pytest.mark.asyncio
+async def test_snapshot_is_used_when_govmap_is_unreachable(tmp_path: Path) -> None:
+    """A technical failure degrades to the snapshot rather than failing."""
+    snapshot_deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, snapshot_deals), client_factory=_DeadGovmap
+    )
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            neighborhood="Lev HaIr",
+            listing_type="purchase",
+            asking_price=5_200_000,
+            area_sqm=100,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.data is not None
+    assert result.data.outcome == "compared"
+    assert result.data.median_comparison_price_per_sqm == pytest.approx(52_000)
+    # The degradation must be visible to the reader, not silent.
+    assert "offline extract" in result.data.source
+    assert any("Live government data was unavailable" in lim for lim in result.data.limitations)
+
+
+@pytest.mark.asyncio
+async def test_empty_live_result_does_not_fall_back_to_the_snapshot(tmp_path: Path) -> None:
+    """>>> The important half of the fallback rule. <<<
+
+    govmap answering "no recorded sales here" is a real answer. Falling
+    back to snapshot data for a different area would turn an honest
+    "no data" into a confident wrong number.
+    """
+    snapshot_deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, snapshot_deals),
+        client_factory=_live([]),  # live works, but has nothing for this address
+    )
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            neighborhood="Lev HaIr",
+            listing_type="purchase",
+            asking_price=5_200_000,
+            area_sqm=100,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.data is not None
+    assert result.data.outcome == "no_comparable_data"
+    assert result.data.comparison_count == 0
+
+
+@pytest.mark.asyncio
+async def test_live_path_can_be_disabled_entirely(tmp_path: Path) -> None:
+    """`client_factory=None` reads only the snapshot, with no network."""
+    deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
+    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals), client_factory=None)
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            neighborhood="Lev HaIr",
+            listing_type="purchase",
+            asking_price=5_200_000,
+            area_sqm=100,
+        )
+    )
+
+    assert result.data is not None
+    assert result.data.outcome == "compared"
+    assert result.data.median_comparison_price_per_sqm == pytest.approx(52_000)
+
+
+@pytest.mark.asyncio
+async def test_error_when_both_live_and_snapshot_fail(tmp_path: Path) -> None:
+    """Nothing left to fall back to -> a genuine technical failure."""
+    tool = NirPriceSignal(
+        snapshot_path=tmp_path / "does_not_exist.json", client_factory=_DeadGovmap
+    )
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            neighborhood="Lev HaIr",
+            listing_type="purchase",
+            asking_price=5_200_000,
+            area_sqm=100,
+        )
+    )
+
+    assert result.status == "error"
+    assert result.data is None
+    assert result.error is not None
+
+
+@pytest.mark.asyncio
+async def test_rental_is_skipped_before_any_network_call(tmp_path: Path) -> None:
+    """The rental check must short-circuit before any data source is touched."""
+    stub = _live([_comparable(5_000_000, 100)])
+    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, []), client_factory=stub)
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address=_ADDRESS,
+            listing_type="rental",
+            asking_price=6_500,
+            area_sqm=55,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert stub.last_address is None
+
+
 # --- Requirement 7: missing listing fields ---------------------------------
 
 
 @pytest.mark.asyncio
 async def test_missing_area_reports_insufficient_data(tmp_path: Path) -> None:
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -163,7 +388,10 @@ async def test_missing_area_reports_insufficient_data(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_missing_asking_price_reports_insufficient_data(tmp_path: Path) -> None:
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -183,7 +411,10 @@ async def test_missing_asking_price_reports_insufficient_data(tmp_path: Path) ->
 @pytest.mark.asyncio
 async def test_both_fields_missing_lists_both(tmp_path: Path) -> None:
     """`missing_fields` must list exactly what is missing — both, here."""
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -205,7 +436,10 @@ async def test_both_fields_missing_lists_both(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_neighborhood_reports_no_comparable_data(tmp_path: Path) -> None:
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -228,7 +462,8 @@ async def test_unknown_neighborhood_reports_no_comparable_data(tmp_path: Path) -
 async def test_too_few_comparables_reports_no_comparable_data(tmp_path: Path) -> None:
     """A median over 2 sales is not a signal, so it must not be published."""
     tool = NirPriceSignal(
-        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100), _deal(5_100_000, 100)])
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100), _deal(5_100_000, 100)]),
+        client_factory=_DeadGovmap,
     )
 
     result = await tool.execute(
@@ -253,7 +488,9 @@ async def test_implausible_price_per_sqm_rows_are_discarded(tmp_path: Path) -> N
     # rows survived, the median would be wildly different.
     deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
     deals += [_deal(5_000_000, 1), _deal(100, 100)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -276,7 +513,9 @@ async def test_stale_deals_are_excluded_from_the_comparison(tmp_path: Path) -> N
     """Old sales must not drag the median (the Neve Tzedek 2019 problem)."""
     recent = [_deal(p * 100, 100, "2026-03-01T00:00:00.000Z") for p in [60_000] * 10]
     stale = [_deal(p * 100, 100, "2019-05-01T00:00:00.000Z") for p in [10_000] * 10]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, recent + stale))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, recent + stale), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -301,7 +540,10 @@ async def test_stale_deals_are_excluded_from_the_comparison(tmp_path: Path) -> N
 
 @pytest.mark.asyncio
 async def test_rental_listing_is_skipped(tmp_path: Path) -> None:
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -322,7 +564,10 @@ async def test_rental_listing_is_skipped(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_rental_is_skipped_even_when_everything_else_is_missing(tmp_path: Path) -> None:
     """Skipping must win over the insufficient-data check, not the reverse."""
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, [_deal(5_000_000, 100)]),
+        client_factory=_DeadGovmap,
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -340,7 +585,9 @@ async def test_rental_is_skipped_even_when_everything_else_is_missing(tmp_path: 
 @pytest.mark.asyncio
 async def test_rental_is_skipped_even_when_the_snapshot_is_unreadable(tmp_path: Path) -> None:
     """The rental check must not depend on the data source being healthy."""
-    tool = NirPriceSignal(snapshot_path=tmp_path / "does_not_exist.json")
+    tool = NirPriceSignal(
+        snapshot_path=tmp_path / "does_not_exist.json", client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -364,7 +611,9 @@ async def test_missing_snapshot_file_returns_error_not_exception(tmp_path: Path)
     Critically it must NOT be reported as `no_comparable_data`, which would
     tell the reader we checked and found nothing when we never checked.
     """
-    tool = NirPriceSignal(snapshot_path=tmp_path / "does_not_exist.json")
+    tool = NirPriceSignal(
+        snapshot_path=tmp_path / "does_not_exist.json", client_factory=_DeadGovmap
+    )
 
     # The assertion is as much that this line does not raise as anything else.
     result = await tool.execute(
@@ -386,7 +635,7 @@ async def test_missing_snapshot_file_returns_error_not_exception(tmp_path: Path)
 async def test_corrupt_snapshot_file_returns_error_not_exception(tmp_path: Path) -> None:
     path = tmp_path / "snapshot.json"
     path.write_text("{ this is not valid json ::::", encoding="utf-8")
-    tool = NirPriceSignal(snapshot_path=path)
+    tool = NirPriceSignal(snapshot_path=path, client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -406,7 +655,7 @@ async def test_corrupt_snapshot_file_returns_error_not_exception(tmp_path: Path)
 async def test_snapshot_missing_neighborhoods_key_returns_error(tmp_path: Path) -> None:
     path = tmp_path / "snapshot.json"
     path.write_text(json.dumps({"generated_at": "2026-08-10"}), encoding="utf-8")
-    tool = NirPriceSignal(snapshot_path=path)
+    tool = NirPriceSignal(snapshot_path=path, client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -426,7 +675,9 @@ async def test_malformed_deal_rows_are_skipped_not_fatal(tmp_path: Path) -> None
     """One bad record in the file must not take down the whole lookup."""
     deals: list[dict] = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
     deals.append({"price": "not a number", "area_sqm": None})  # garbage row
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -460,7 +711,11 @@ async def test_tool_executes_through_the_registry(tmp_path: Path) -> None:
     """Registration and execution must work through the real `ToolRegistry`."""
     deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
     registry = ToolRegistry()
-    registry.register(NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals)))
+    registry.register(
+        NirPriceSignal(
+            snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+        )
+    )
 
     result = await registry.execute(
         "price_signal",
@@ -499,7 +754,9 @@ async def test_neighborhood_aliases_all_resolve(tmp_path: Path, neighborhood: st
     work with whichever resolver is active.
     """
     deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -519,7 +776,9 @@ async def test_neighborhood_aliases_all_resolve(tmp_path: Path, neighborhood: st
 async def test_falls_back_to_address_when_no_neighborhood_given(tmp_path: Path) -> None:
     """With no neighbourhood, the address is matched against the aliases."""
     deals = [_deal(p * 100, 100) for p in (50_000, 52_000, 54_000)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, deals))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, deals), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -545,7 +804,9 @@ async def test_similar_sized_comparables_are_preferred(tmp_path: Path) -> None:
     # 90,000/sqm. A 100 sqm listing should be judged against the former.
     small = [_deal(50_000 * 100, 100 + i) for i in range(6)]
     large = [_deal(90_000 * 300, 300 + i) for i in range(6)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, small + large))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, small + large), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -570,7 +831,9 @@ async def test_falls_back_to_all_sizes_when_band_is_too_thin(tmp_path: Path) -> 
     # Only 2 deals near 100 sqm; the rest are much larger.
     small = [_deal(50_000 * 100, 100), _deal(50_000 * 100, 105)]
     large = [_deal(90_000 * 300, 300 + i) for i in range(6)]
-    tool = NirPriceSignal(snapshot_path=_write_snapshot(tmp_path, small + large))
+    tool = NirPriceSignal(
+        snapshot_path=_write_snapshot(tmp_path, small + large), client_factory=_DeadGovmap
+    )
 
     result = await tool.execute(
         PriceSignalInput(
@@ -619,7 +882,7 @@ def test_every_committed_bucket_is_reachable_by_its_own_display_name() -> None:
     that cannot be found by its own name is dead weight.
     """
     snapshot = json.loads(DEFAULT_SNAPSHOT_PATH.read_text(encoding="utf-8"))
-    tool = NirPriceSignal()
+    tool = NirPriceSignal(client_factory=_DeadGovmap)
 
     for key, entry in snapshot["neighborhoods"].items():
         found = tool._snapshot.lookup(entry["display_name"])
@@ -634,7 +897,7 @@ async def test_default_committed_snapshot_produces_a_real_comparison() -> None:
     periodically) but strict that a well-formed listing in a covered
     neighbourhood yields a genuine comparison.
     """
-    tool = NirPriceSignal()
+    tool = NirPriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
