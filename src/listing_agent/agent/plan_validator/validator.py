@@ -4,8 +4,15 @@ Validates and normalizes the `TriagePlan` produced by `triage_planner`
 before any tool is executed. Pure/deterministic: no LLM or network calls.
 """
 
-from src.listing_agent.agent.claim_categories import normalize_category
+import math
+import re
+
+from src.listing_agent.agent.claim_categories import (
+    TOOLS_BY_VERIFIABLE_CATEGORY,
+    normalize_category,
+)
 from src.listing_agent.agent.schemas import (
+    BuyerGoal,
     Claim,
     ClaimSource,
     PropertyDetails,
@@ -19,6 +26,222 @@ ALLOWED_TOOLS: frozenset[str] = frozenset({"geo_resolver", "nearby_services", "p
 MAX_TOOL_CALLS = 3
 MAX_CLAIMS = 8
 LOCATION_DEPENDENT_TOOLS: frozenset[str] = frozenset({"nearby_services", "price_signal"})
+
+# Canonical categories carrying a structured `PropertyDetails` equivalent -
+# a claim in one of these categories is redundant with a typed field
+# already available to `report_writer`/tools; a *second* claim in the same
+# category never needs to consume another claim slot (Phase: claim
+# retention fix). Deliberately excludes `"condition"`: distinct condition
+# claims (safe room vs. parquet vs. kitchen) are never redundant with each
+# other just because they share a category.
+_REDUNDANT_WITH_PROPERTY_DETAILS: frozenset[str] = frozenset(
+    {"address", "price", "rooms", "size_sqm"}
+)
+
+# Of the categories above, these carry a single *numeric* `PropertyDetails`
+# field that a claim's own text can be checked against (Phase: multi-entity
+# dedup fix). `"address"` is deliberately excluded: it has no comparable
+# numeric value, and free-text address wording (e.g. a neighborhood name
+# vs. a street+number) can never be reliably compared for "is this the same
+# fact" beyond "it is still *a* address claim about the current listing" -
+# that coarser, category-only rule is unchanged from before this fix.
+_NUMERIC_PROPERTY_DETAIL_FIELDS: dict[str, str] = {
+    "price": "asking_price",
+    "rooms": "rooms",
+    "size_sqm": "sqm",
+}
+
+# Matches a plain number in either LTR or Hebrew-preceding-punctuation
+# text, with optional thousands separators (","/".") and an optional
+# decimal part - e.g. "82", "4,350,000", "12.5".
+_NUMBER_PATTERN = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _extract_numbers(text: str) -> list[float]:
+    """Extract every plain number literally present in `text`.
+
+    Deliberately dumb/general (no unit-word parsing, no listing-specific
+    keyword matching): just finds digit runs and normalizes thousands
+    separators, so it works identically regardless of language, address,
+    or listing.
+    """
+    numbers: list[float] = []
+    for match in _NUMBER_PATTERN.finditer(text):
+        raw = match.group().replace(",", "")
+        try:
+            numbers.append(float(raw))
+        except ValueError:
+            continue
+    return numbers
+
+
+def _claim_restates_property_detail_value(
+    canonical: str, claim_text: str, property_details: PropertyDetails
+) -> bool:
+    """Whether `claim_text` actually restates the *same* numeric fact
+    already captured by the matching `PropertyDetails` field for
+    `canonical` (Phase: multi-entity dedup fix).
+
+    A claim sharing a "listing-fact" category with `PropertyDetails` is
+    only truly redundant when it names the *same value* - e.g. both say
+    "60 sqm". A second claim in the same category naming a *different*
+    value (a future replacement unit's own 82 sqm, its 12 sqm balcony, a
+    comparison unit's price, ...) describes a distinct fact/entity and
+    must never be dropped merely for sharing a category with the current
+    property's structured field.
+
+    Returns `False` (never redundant by this rule) whenever there is no
+    comparable `PropertyDetails` value to check against, or the category
+    has no numeric field at all (e.g. `"address"` - handled separately,
+    unchanged, by category alone).
+    """
+    field_name = _NUMERIC_PROPERTY_DETAIL_FIELDS.get(canonical)
+    if field_name is None:
+        return False
+    target = getattr(property_details, field_name, None)
+    if target is None:
+        return False
+    return any(
+        math.isclose(number, target, rel_tol=1e-9, abs_tol=1e-6)
+        for number in _extract_numbers(claim_text)
+    )
+
+# Which canonical claim categories are "directly relevant" to a given
+# `BuyerGoal`, for claim-retention prioritization only (priority 1 below).
+# `None` means the goal does not narrow relevance - the buyer asked
+# something broad/generic enough that ranking falls through to the general
+# priority order (2-6) instead of a blanket "everything is priority 1".
+# This mirrors (but is independently defined from) the diagnostic-only
+# explanatory mapping in `scripts/inspect_listing_pipeline.py`, which only
+# explains question-answerability text and never decides claim retention.
+_GOAL_RELEVANT_CATEGORIES: dict[str, frozenset[str] | None] = {
+    "family_suitability": frozenset({"nearby_amenities", "address", "rooms", "size_sqm"}),
+    "nearby_services_check": frozenset({"nearby_amenities", "address"}),
+    "price_validation": frozenset({"price_comparison", "price", "size_sqm", "address"}),
+    "general_question": None,
+    "fast_claim_triage": None,
+}
+
+
+def _claim_priority(claim: Claim, buyer_goal: BuyerGoal) -> int:
+    """Deterministic claim-retention priority (lower survives the cap first).
+
+    1. Claims whose canonical category is directly relevant to `buyer_goal`.
+    2. Claims checkable by a current tool (`nearby_amenities`,
+       `price_comparison`).
+    3. Material transaction-structure / future-commitment claims.
+    4. Factual claims requiring seller/document/physical verification
+       (including a claim with no canonical category, e.g. floor).
+    5. Unique listing facts already represented by a typed
+       `PropertyDetails` field (address/price/rooms/size_sqm) - a
+       redundant *duplicate* claim in the same category is removed
+       entirely by `_dedupe_claims` before this ranking ever runs, so
+       only the single surviving representative claim reaches here.
+    6. Subjective marketing claims.
+
+    Never depends on raw LLM list position - only on `claim.type` and its
+    already-normalized canonical category, so ties are broken purely by
+    stable sort order (the claims' order after deduplication).
+
+    Note (multi-entity dedup fix): for a numeric category
+    (price/rooms/size_sqm), `_dedupe_claims` now only removes a claim that
+    restates the *same value* as the `PropertyDetails` field - a
+    distinct-value claim describing another entity/state (e.g. a future
+    replacement unit's own size, or its balcony) survives dedup and can
+    also reach priority 5 alongside the single current-property
+    representative. This is intentional: both are still "a listing fact
+    of this shape", just not necessarily about the current property.
+    """
+    if claim.type == "subjective":
+        return 6
+
+    canonical = normalize_category(claim.category)
+    relevant = _GOAL_RELEVANT_CATEGORIES.get(buyer_goal)
+    if relevant is not None and canonical in relevant:
+        return 1
+    if canonical in TOOLS_BY_VERIFIABLE_CATEGORY:
+        return 2
+    if canonical == "transaction_structure":
+        return 3
+    if canonical in _REDUNDANT_WITH_PROPERTY_DETAILS:
+        return 5
+    # condition, or no canonical category at all (e.g. floor) - a
+    # factual claim requiring seller/document/physical verification.
+    return 4
+
+
+def _normalized_claim_text(text: str) -> str:
+    return " ".join(text.strip().casefold().split())
+
+
+def _dedupe_claims(claims: list[Claim], property_details: PropertyDetails) -> list[Claim]:
+    """Remove claims that would waste claim-cap capacity without losing
+    any distinct fact (Phase: claim retention fix; refined by the
+    multi-entity dedup fix).
+
+    Two independent rules, applied in order:
+
+    1. Exact-duplicate normalized text (whitespace/case-insensitive) -
+       always redundant regardless of category.
+    2. A *second or later* claim whose canonical category is already
+       represented by a typed `PropertyDetails` field
+       (`_REDUNDANT_WITH_PROPERTY_DETAILS`: address/price/rooms/size_sqm):
+
+       - `"address"` has no comparable numeric value, so it keeps the
+         original, coarser behavior - the first address claim is kept,
+         later ones are dropped purely by category (still correct for a
+         single-property listing's own alternate address wordings).
+       - `"price"`/`"rooms"`/`"size_sqm"` are only dropped as duplicates
+         when the claim's own text actually restates the *same value* as
+         `PropertyDetails` (`_claim_restates_property_detail_value`). A
+         claim naming a *different* value in the same category (a future
+         replacement unit's own size, its balcony, a second entity's
+         price, ...) is never a redundant restatement of the current
+         property's structured field and must survive - dropping it would
+         silently lose a distinct fact about a distinct entity/state.
+
+    Never deduplicates by category alone for any other category:
+    `"condition"` claims (safe room, parquet, kitchen, bathroom, ...) are
+    always distinct commitments and are never merged just because they
+    share a broad legacy category.
+    """
+    seen_text: set[str] = set()
+    seen_property_detail_categories: set[str] = set()
+    deduped: list[Claim] = []
+    for claim in claims:
+        normalized_text = _normalized_claim_text(claim.text)
+        if normalized_text and normalized_text in seen_text:
+            continue
+
+        canonical = normalize_category(claim.category)
+        if canonical in _REDUNDANT_WITH_PROPERTY_DETAILS:
+            if canonical in _NUMERIC_PROPERTY_DETAIL_FIELDS:
+                if _claim_restates_property_detail_value(
+                    canonical, claim.text, property_details
+                ):
+                    if canonical in seen_property_detail_categories:
+                        continue
+                    seen_property_detail_categories.add(canonical)
+                # else: a distinct-value claim for this numeric category -
+                # never deduped by this rule, regardless of how many other
+                # claims already matched the property-details value.
+            else:
+                # "address" (or any future non-numeric category added
+                # here): unchanged, category-only dedup.
+                if canonical in seen_property_detail_categories:
+                    continue
+                seen_property_detail_categories.add(canonical)
+
+        if normalized_text:
+            seen_text.add(normalized_text)
+        deduped.append(claim)
+    return deduped
+
+
+def _prioritize_claims(claims: list[Claim], buyer_goal: BuyerGoal) -> list[Claim]:
+    """Stable-sort `claims` by `_claim_priority` only - ties preserve the
+    incoming (post-dedup) order, never raw LLM list position alone."""
+    return sorted(claims, key=lambda claim: _claim_priority(claim, buyer_goal))
 
 
 class PlanValidationError(Exception):
@@ -144,33 +367,55 @@ def _ensure_nearby_services_for_known_claims(
     (an unresolvable/missing address is handled by
     `_ensure_geo_resolver_dependency`, which drops location-dependent tools
     entirely rather than calling them blind).
+
+    Only synthesizes a call when at least one supported frozen category is
+    grounded in the linked claims' text. If a `nearby_amenities` claim
+    resolves to no supported category, no call is synthesized - the tool
+    must not fan out to every default category to "support" a claim no
+    supported category actually covers.
     """
     if any(call.tool == "nearby_services" for call in tool_calls):
         return tool_calls
     if not property_details.raw_address:
         return tool_calls
 
-    nearby_claim = next(
-        (
-            claim
-            for claim in claims
-            if claim.id
-            and claim.type != "subjective"
-            and normalize_category(claim.category) == "nearby_amenities"
-        ),
-        None,
-    )
-    if nearby_claim is None:
+    nearby_claims = [
+        claim
+        for claim in claims
+        if claim.id
+        and claim.type != "subjective"
+        and normalize_category(claim.category) == "nearby_amenities"
+    ]
+    if not nearby_claims:
         return tool_calls
 
-    categories = resolve_nearby_categories(claim_text=nearby_claim.text)
-    arguments: dict[str, object] = {"categories": categories} if categories else {}
+    # Combine every matching claim's text (not just the first) when
+    # resolving categories: an atomized planner output may split "green
+    # view, kindergarten complex, street parking" into three separate
+    # `nearby_amenities` claims, and the *first* one alone (e.g. "green
+    # view") may carry no recognizable category keyword at all - only the
+    # combined text reliably recovers "daycare" from whichever claim
+    # actually mentions it.
+    combined_text = " ".join(claim.text for claim in nearby_claims)
+    categories = resolve_nearby_categories(claim_text=combined_text)
+    # Only synthesize a call when at least one *supported* frozen category is
+    # grounded in the linked claims' own text. A `nearby_amenities` claim whose
+    # text resolves to no supported category (e.g. robotic parking, a community
+    # centre, generic "educational institutions") must NOT synthesize a
+    # `nearby_services` call: an empty-category synthesized call would fan out
+    # to the full default category set downstream and fabricate evidence
+    # categories no retained claim actually supports. The empty-category
+    # default-to-all behavior is reserved for a genuinely broad, *planner
+    # proposed* "what's nearby" request (handled in `build_tool_input`), never
+    # for synthesis the validator adds on the planner's behalf.
+    if not categories:
+        return tool_calls
     return [
         *tool_calls,
         ToolCall(
             tool="nearby_services",
-            arguments=arguments,
-            supports_claim_ids=[nearby_claim.id],
+            arguments={"categories": categories},
+            supports_claim_ids=[claim.id for claim in nearby_claims],
         ),
     ]
 
@@ -252,21 +497,75 @@ def _assign_stable_claim_ids(claims: list[Claim]) -> list[Claim]:
 
 
 def _cap_claims(
-    claims: list[Claim], max_claims: int, missing_information: list[str]
+    claims: list[Claim],
+    max_claims: int,
+    missing_information: list[str],
+    *,
+    produced_count: int | None = None,
+    deduped_count: int | None = None,
 ) -> list[Claim]:
-    """Cap the number of claims carried forward, keeping the first `max_claims`.
+    """Cap the (already deduplicated and priority-sorted) claim list at
+    `max_claims`, keeping the first `max_claims` entries.
 
-    Extra claims are dropped deterministically (never by asking the LLM to
-    re-plan): this bounds the size of the Evidence Bundle and the compact
-    payload eventually sent to `report_writer`, protecting cost and
-    latency. The drop is recorded in `missing_information` so it is never
-    silent.
+    Deliberately dumb: by the time this runs, `claims` has already been
+    deduplicated (`_dedupe_claims`) and reordered by semantic priority
+    (`_prioritize_claims`), so "keep the first N" now means "keep the N
+    highest-priority, non-redundant claims" - never "keep the first N in
+    raw LLM order" (the original claim-loss defect).
+
+    Records two things in `missing_information` so the drop is never
+    silent:
+
+    1. the exact, stable marker `"additional_claims_truncated"` (kept
+       byte-for-byte unchanged - existing callers/tests/reports that check
+       for this exact string must keep working);
+    2. Phase (truncation observability): a richer, still-compact
+       diagnostic string with produced/deduplicated/retained/removed
+       counts and the *category* (never the raw text) of what was
+       removed, via `_truncation_summary`.
     """
     if len(claims) <= max_claims:
         return claims
     if "additional_claims_truncated" not in missing_information:
         missing_information.append("additional_claims_truncated")
-    return claims[:max_claims]
+
+    retained = claims[:max_claims]
+    removed = claims[max_claims:]
+    summary = _truncation_summary(
+        produced_count=produced_count if produced_count is not None else len(claims),
+        deduped_count=deduped_count if deduped_count is not None else len(claims),
+        retained_count=len(retained),
+        removed_claims=removed,
+    )
+    if summary and summary not in missing_information:
+        missing_information.append(summary)
+    return retained
+
+
+def _truncation_summary(
+    produced_count: int, deduped_count: int, retained_count: int, removed_claims: list[Claim]
+) -> str | None:
+    """Build a compact, human-readable diagnostic string describing what a
+    claims-cap truncation actually removed (Phase: truncation
+    observability).
+
+    Never includes full raw claim text (avoids bloating
+    `missing_information` with large discarded payloads) - only counts and
+    a deduplicated, sorted list of the removed claims' canonical
+    categories (or `"uncategorized"`), so a buyer-facing report or a
+    reviewer can tell *what kind* of information was trimmed without a
+    separate, larger diagnostic payload.
+    """
+    if not removed_claims:
+        return None
+    categories = sorted(
+        {normalize_category(claim.category) or "uncategorized" for claim in removed_claims}
+    )
+    return (
+        f"additional_claims_truncated_detail: produced={produced_count} "
+        f"deduplicated={deduped_count} retained={retained_count} "
+        f"removed={len(removed_claims)} removed_categories={categories}"
+    )
 
 
 def validate_plan(
@@ -279,24 +578,33 @@ def validate_plan(
 
     Rules applied, in order:
     1. Reject any tool call outside the whitelist (raises `PlanValidationError`).
-    2. Cap the plan at `max_claims` claims (default 8), recording the drop.
-    3. Assign a stable id to any claim that doesn't already have one (done
+    2. Deduplicate claims: exact-duplicate normalized text, and a second+
+       claim redundant with an already-captured `PropertyDetails` field
+       (address/price/rooms/size_sqm) - never claims that merely share a
+       broader category (e.g. two distinct `"condition"` commitments).
+    3. Deterministically prioritize the deduplicated claims (buyer-goal
+       relevance > tool-checkable > transaction-structure > seller/document
+       verification > redundant-with-PropertyDetails > subjective), with a
+       stable sort so equal-priority claims keep their post-dedup order.
+    4. Cap the prioritized plan at `max_claims` claims (default 8),
+       recording what was produced/deduplicated/retained/removed.
+    5. Assign a stable id to any claim that doesn't already have one (done
        before tool-call synthesis below, so a synthesized call can link to
        a stable claim id).
-    4. Remove duplicate calls to the same tool.
-    5. Drop `price_signal` calls forbidden for rentals or missing price/sqm.
-    6. Synthesize a missing `nearby_services` call for a known, verifiable
+    6. Remove duplicate calls to the same tool.
+    7. Drop `price_signal` calls forbidden for rentals or missing price/sqm.
+    8. Synthesize a missing `nearby_services` call for a known, verifiable
        `nearby_amenities` claim the planner did not propose a tool call for
        (Phase 19).
-    7. Ensure `geo_resolver` runs first whenever a location-dependent tool
+    9. Ensure `geo_resolver` runs first whenever a location-dependent tool
        is selected (dropping those tools if no address is available).
-    8. Ensure a `price_signal` call is linked to a genuine comparative
-       claim rather than the literal `"price"` listing fact, synthesizing
-       one deterministic, explicitly-marked derived claim when the buyer's
-       goal is `"price_validation"` and no such claim already exists
-       (Phase 19).
-    9. Order `geo_resolver` first (dependency order).
-    10. Cap the plan at `max_tool_calls` tool calls (default 3).
+    10. Ensure a `price_signal` call is linked to a genuine comparative
+        claim rather than the literal `"price"` listing fact, synthesizing
+        one deterministic, explicitly-marked derived claim when the buyer's
+        goal is `"price_validation"` and no such claim already exists
+        (Phase 19).
+    11. Order `geo_resolver` first (dependency order).
+    12. Cap the plan at `max_tool_calls` tool calls (default 3).
 
     Args:
         max_tool_calls: Configurable cap (Phase 17), normally sourced from
@@ -315,7 +623,16 @@ def validate_plan(
 
     missing_information = list(plan.missing_information)
 
-    claims = _cap_claims(plan.claims, max_claims, missing_information)
+    produced_count = len(plan.claims)
+    deduped_claims = _dedupe_claims(plan.claims, plan.property_details)
+    prioritized_claims = _prioritize_claims(deduped_claims, plan.buyer_goal)
+    claims = _cap_claims(
+        prioritized_claims,
+        max_claims,
+        missing_information,
+        produced_count=produced_count,
+        deduped_count=len(deduped_claims),
+    )
     claims = _assign_stable_claim_ids(claims)
 
     tool_calls = _dedupe_by_tool(plan.tool_calls)
