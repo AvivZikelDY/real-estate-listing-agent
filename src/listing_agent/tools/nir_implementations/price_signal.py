@@ -322,7 +322,7 @@ class NirPriceSignal:
             try:
                 async with self._client_factory() as client:
                     # Four calls, ~0.7s. No neighbourhood filtering needed:
-                    # the client locates the address's own land parcel, so
+                 # the client locates the address's own land parcel, so
                     # the deals are its own neighbourhood by construction.
                     return await client.find_comparable_deals(
                         input_model.normalized_address
