@@ -30,10 +30,11 @@ from src.listing_agent.agent.tool_executor.errors import (
 from src.listing_agent.agent.tool_executor.result import ToolExecutionResult
 from src.listing_agent.tools.registry import ToolRegistry
 
-# Conservative default: generous enough for any of the current deterministic
-# local mocks (which return near-instantly), while still bounding a future
-# local implementation that might perform slower local computation or I/O.
-DEFAULT_TOOL_TIMEOUT_SECONDS = 8.0
+# Nir's real tool implementations are all live now: govmap (~0.7-2.9s) and
+# Overpass, whose mirror fallback can legitimately run tens of seconds when
+# the canonical mirror is overloaded (measured once at 41s end to end). 120s
+# gives that headroom while still bounding a genuinely hung request.
+DEFAULT_TOOL_TIMEOUT_SECONDS = 120.0
 
 # Maps a specific typed `ToolExecutionError` subclass to its `ToolErrorCode`.
 # A tool/registry may raise one of these to signal a precise failure reason

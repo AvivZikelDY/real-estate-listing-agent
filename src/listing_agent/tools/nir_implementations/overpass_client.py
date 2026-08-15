@@ -21,9 +21,11 @@ while `overpass.kumi.systems` answered the identical query in full (82
 places around Rothschild 30). So `MIRRORS` is tried in order, and a dead
 mirror is a reason to move on rather than to fail.
 
-That flakiness is also the main argument for `nearby_services` reading a
-committed snapshot rather than calling this live on every request — see
-`build_poi_snapshot.py`.
+`NirNearbyServices.execute()` calls this live on every request, with no
+offline fallback — that mirror flakiness is exactly why `REQUEST_TIMEOUT_S`
+is generous and why `LocalToolExecutor` gives tool calls a wide timeout
+ceiling (`src/listing_agent/agent/tool_executor/local.py`). A run where
+every mirror fails propagates to `status="error"`.
 """
 
 import asyncio

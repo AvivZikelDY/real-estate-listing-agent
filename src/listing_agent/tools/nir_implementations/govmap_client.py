@@ -26,35 +26,20 @@ address to transactions takes four hops:
 (!) Step 2 is the trap: despite the `/deals/` path it returns no
 transactions at all, only polygon metadata. See `polygons_by_radius`.
 
->>> WHY THIS FILE IS NOT CALLED YET <<<
----------------------------------------
-Everything here is finished, working code, verified against the live API —
-but `NirPriceSignal.execute()` does not call it yet.
+>>> THIS IS THE LIVE PATH, WITH NO FALLBACK <<<
+------------------------------------------------
+`NirPriceSignal.execute()` calls this on every request. There is no
+offline snapshot fallback: a failure here propagates to `status="error"`.
 
 MEASURED LATENCY: a full `find_comparable_deals()` for a Tel Aviv address
-takes **2.6-2.9 seconds** end to end (~450 deals returned), against the 8s
-ceiling `LocalToolExecutor` enforces
-(`src/listing_agent/agent/tool_executor/local.py:36`).
+takes **2.6-2.9 seconds** end to end (~450 deals returned). The earlier
+assumption that ~21 throttled calls could not finish in time was wrong:
+deduplicating polygons and dropping empty ones cuts the count well below
+the worst case, and steps 3 and 4 run concurrently per polygon.
 
-So it FITS, with roughly 5 seconds of headroom. The earlier assumption that
-~21 throttled calls could not finish in time was wrong: deduplicating
-polygons and dropping empty ones cuts the count well below the worst case,
-and steps 3 and 4 run concurrently per polygon.
-
-Staying on the offline snapshot is therefore a deliberate choice, not a
-forced one. What it buys:
-
-  * Deterministic tests, with no network in CI.
-  * `price_signal` keeps working when govmap is down or slow.
-  * No per-request dependency on a free public service's latency, which is
-    the part of the 5s headroom nobody controls.
-
-What it costs: the figures are a point-in-time extract, which the tool
-discloses in `limitations` on every result.
-
-Going live is a one-line change — search `SWAP:` in `price_signal.py`.
-Either way this client is exercised for real every time the snapshot is
-regenerated, so it cannot rot silently.
+`comparables_snapshot.json` and `build_snapshot.py` still exist as an
+offline extract (useful for tests, or as a reference point), but nothing
+in the live request path reads them anymore.
 """
 
 import asyncio
