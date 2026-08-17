@@ -495,6 +495,253 @@ SCENARIOS: dict[int, Scenario] = {
             "no definitive purchase recommendation",
         ),
     ),
+    # --- 11-15: live-tool integration scenarios ---------------------------
+    #
+    # Scenarios 1-10 all describe cooperative, well-formed plans against
+    # addresses that resolve cleanly. These five exist to exercise the
+    # paths that only become interesting once `TOOLS_MODE=nir` runs against
+    # real data (`--live-tools`): a geo_resolver outcome that is valid but
+    # unusable, a listing type the validator must reject a tool for, an
+    # address outside the Tel Aviv comparables coverage, and planner
+    # argument names that need normalizing.
+    #
+    # `expected_tools`/`forbidden_tools` are still asserted against the
+    # *planned* tools (what `plan_validator` kept), never against what a
+    # live run happened to execute - so these stay deterministic offline.
+    11: Scenario(
+        id=11,
+        title="Ambiguous address - dependents skipped, not failed",
+        listing=(
+            'דירת 4 חדרים ברחוב הרצל בתל אביב.\n90 מ"ר, מחיר 3,900,000 ש"ח.\nקרובה לפארק.'
+        ),
+        question=None,
+        expected_goal="fast_claim_triage",
+        expected_categories=("rooms", "address", "size_sqm", "price", "nearby_amenities"),
+        # All three are *planned*. Live, geo_resolver returns
+        # outcome="ambiguous" (a street name with no house number matches
+        # several equally-scored records), which is status="ok" but yields
+        # no coordinates - so evidence_collector records the other two as
+        # status="skipped", never "error".
+        expected_tools=("geo_resolver", "nearby_services", "price_signal"),
+        forbidden_tools=(),
+        expected_answerability="partially_verifiable",
+        plan=TriagePlan(
+            property_details=PropertyDetails(
+                listing_type="purchase",
+                raw_address="הרצל, תל אביב",
+                asking_price=3_900_000,
+                sqm=90,
+                rooms=4,
+            ),
+            buyer_goal="fast_claim_triage",
+            claims=[
+                Claim(text="דירת 4 חדרים", type="factual", category="rooms"),
+                Claim(text="ברחוב הרצל בתל אביב", type="factual", category="address"),
+                Claim(text='90 מ"ר', type="factual", category="size_sqm"),
+                Claim(text='מחיר 3,900,000 ש"ח', type="factual", category="price"),
+                Claim(text="קרובה לפארק", type="factual", category="nearby_amenities"),
+            ],
+            tool_calls=[
+                ToolCall(tool="geo_resolver", arguments={"address": "הרצל, תל אביב"}),
+                ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        ),
+        invariants=(
+            "an ambiguous address is status=ok, not a tool error",
+            "dependent tools are skipped rather than run on a guessed address",
+            "the report must not pick one of the candidate addresses itself",
+        ),
+    ),
+    12: Scenario(
+        id=12,
+        title="Non-existent address - not_found propagates as a skip",
+        listing="דירה ברחוב כתובת לא קיימת 999 בתל אביב.\nקרובה לבתי ספר.",
+        question=None,
+        expected_goal="fast_claim_triage",
+        expected_categories=("address", "nearby_amenities"),
+        expected_tools=("geo_resolver", "nearby_services"),
+        # No asking_price/sqm, so plan_validator drops price_signal even if
+        # the planner had proposed it.
+        forbidden_tools=("price_signal",),
+        expected_answerability="missing_information",
+        plan=TriagePlan(
+            property_details=PropertyDetails(
+                listing_type="purchase",
+                raw_address="כתובת לא קיימת 999, תל אביב",
+                asking_price=None,
+                sqm=None,
+                rooms=None,
+            ),
+            buyer_goal="fast_claim_triage",
+            claims=[
+                Claim(
+                    text="ברחוב כתובת לא קיימת 999 בתל אביב",
+                    type="factual",
+                    category="address",
+                ),
+                Claim(text="קרובה לבתי ספר", type="factual", category="nearby_amenities"),
+            ],
+            missing_information=["asking_price", "sqm", "rooms"],
+            tool_calls=[
+                ToolCall(
+                    tool="geo_resolver", arguments={"address": "כתובת לא קיימת 999, תל אביב"}
+                ),
+                ToolCall(tool="nearby_services", arguments={"categories": ["school"]}),
+            ],
+        ),
+        invariants=(
+            "not_found is a business outcome, never a tool error",
+            "the address is reported as unverified, not as non-existent property",
+            "no coordinates are invented for the nearby lookup",
+        ),
+    ),
+    13: Scenario(
+        id=13,
+        title="Rental listing - validator drops price_signal",
+        listing=(
+            'דירת 3 חדרים להשכרה ברחוב דיזנגוף 100 בתל אביב.\n'
+            '70 מ"ר, שכר דירה 7,500 ש"ח לחודש.\nקרובה לסופרמרקט ובית מרקחת.'
+        ),
+        question=None,
+        expected_goal="fast_claim_triage",
+        expected_categories=("rooms", "address", "size_sqm", "price", "nearby_amenities"),
+        expected_tools=("geo_resolver", "nearby_services"),
+        # The plan below deliberately *does* propose price_signal.
+        # `_drop_forbidden_price_signal` removes it because listing_type is
+        # "rental" - comparing a monthly rent against purchase transactions
+        # would be meaningless. The tool's own rental skip is a second line
+        # of defence that this path never reaches.
+        forbidden_tools=("price_signal",),
+        expected_answerability="partially_verifiable",
+        plan=TriagePlan(
+            property_details=PropertyDetails(
+                listing_type="rental",
+                raw_address="דיזנגוף 100, תל אביב",
+                asking_price=7_500,
+                sqm=70,
+                rooms=3,
+            ),
+            buyer_goal="fast_claim_triage",
+            claims=[
+                Claim(text="דירת 3 חדרים", type="factual", category="rooms"),
+                Claim(text="ברחוב דיזנגוף 100 בתל אביב", type="factual", category="address"),
+                Claim(text='70 מ"ר', type="factual", category="size_sqm"),
+                Claim(text='שכר דירה 7,500 ש"ח לחודש', type="factual", category="price"),
+                Claim(
+                    text="קרובה לסופרמרקט ובית מרקחת",
+                    type="factual",
+                    category="nearby_amenities",
+                ),
+            ],
+            tool_calls=[
+                ToolCall(tool="geo_resolver", arguments={"address": "דיזנגוף 100, תל אביב"}),
+                ToolCall(
+                    tool="nearby_services",
+                    arguments={"categories": ["supermarket", "pharmacy"]},
+                ),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        ),
+        invariants=(
+            "price_signal never runs for a rental",
+            "the rent figure is repeated as a listing fact, never benchmarked",
+            "nearby evidence is still collected normally",
+        ),
+    ),
+    14: Scenario(
+        id=14,
+        title="Address outside Tel Aviv - comparables coverage boundary",
+        listing=(
+            'דירת 4 חדרים ברחוב יפו 97 בירושלים.\n95 מ"ר, מחיר 2,800,000 ש"ח.\n'
+            "קרובה לתחבורה ציבורית."
+        ),
+        question=None,
+        expected_goal="fast_claim_triage",
+        expected_categories=("rooms", "address", "size_sqm", "price", "nearby_amenities"),
+        expected_tools=("geo_resolver", "nearby_services", "price_signal"),
+        forbidden_tools=(),
+        expected_answerability="partially_verifiable",
+        plan=TriagePlan(
+            property_details=PropertyDetails(
+                listing_type="purchase",
+                raw_address="יפו 97, ירושלים",
+                asking_price=2_800_000,
+                sqm=95,
+                rooms=4,
+            ),
+            buyer_goal="fast_claim_triage",
+            claims=[
+                Claim(text="דירת 4 חדרים", type="factual", category="rooms"),
+                Claim(text="ברחוב יפו 97 בירושלים", type="factual", category="address"),
+                Claim(text='95 מ"ר', type="factual", category="size_sqm"),
+                Claim(text='מחיר 2,800,000 ש"ח', type="factual", category="price"),
+                Claim(
+                    text="קרובה לתחבורה ציבורית",
+                    type="factual",
+                    category="nearby_amenities",
+                ),
+            ],
+            tool_calls=[
+                ToolCall(tool="geo_resolver", arguments={"address": "יפו 97, ירושלים"}),
+                ToolCall(
+                    tool="nearby_services", arguments={"categories": ["public_transport"]}
+                ),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        ),
+        invariants=(
+            "a non-Tel-Aviv address still resolves and still gets nearby evidence",
+            "thin or absent comparables surface as a typed price outcome, not an error",
+        ),
+    ),
+    15: Scenario(
+        id=15,
+        title="Planner uses alias argument names for nearby_services",
+        listing=(
+            "דירת 3 חדרים ברחוב אבן גבירול 80 בתל אביב.\nקרובה לסופרמרקט ובית מרקחת."
+        ),
+        question=None,
+        expected_goal="nearby_services_check",
+        expected_categories=("rooms", "address", "nearby_amenities"),
+        expected_tools=("geo_resolver", "nearby_services"),
+        forbidden_tools=("price_signal",),
+        expected_answerability="verifiable",
+        plan=TriagePlan(
+            property_details=PropertyDetails(
+                listing_type="purchase",
+                raw_address="אבן גבירול 80, תל אביב",
+                asking_price=None,
+                sqm=None,
+                rooms=3,
+            ),
+            buyer_goal="nearby_services_check",
+            claims=[
+                Claim(text="דירת 3 חדרים", type="factual", category="rooms"),
+                Claim(text="ברחוב אבן גבירול 80 בתל אביב", type="factual", category="address"),
+                Claim(
+                    text="קרובה לסופרמרקט ובית מרקחת",
+                    type="factual",
+                    category="nearby_amenities",
+                ),
+            ],
+            missing_information=["asking_price", "sqm"],
+            # Neither call uses the documented `categories` argument: one
+            # uses the `services` list alias, the other the `service_type`
+            # free-text alias. Both are argument names the real planner has
+            # been observed producing. Section 9 of the report shows what
+            # `tool_input_builder` normalized them into.
+            tool_calls=[
+                ToolCall(tool="geo_resolver", arguments={"address": "אבן גבירול 80, תל אביב"}),
+                ToolCall(tool="nearby_services", arguments={"services": ["supermarket"]}),
+                ToolCall(tool="nearby_services", arguments={"service_type": "בית מרקחת"}),
+            ],
+        ),
+        invariants=(
+            "alias argument names are normalized, never dropped",
+            "an unrecognized argument never silently widens to every category",
+        ),
+    ),
 }
 
 

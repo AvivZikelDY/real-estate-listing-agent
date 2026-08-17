@@ -311,7 +311,9 @@ async def test_text_mode_contains_all_required_sections() -> None:
         "7. NORMALIZATION AND VALIDATION DECISIONS",
         "8. FINAL VALIDATED TOOL PLAN",
         "9. PREPARED TOOL INPUTS",
-        "10. MOCK TOOL EXECUTION RESULTS",
+        # Heading names the tool mode actually used; without --live-tools
+        # that is always "mock".
+        "10. TOOL EXECUTION RESULTS (mock tools)",
         "11. EVIDENCE BUNDLE",
         "12. DIAGNOSTICS",
     ):

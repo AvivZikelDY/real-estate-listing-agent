@@ -10,16 +10,18 @@ Raw listing + optional user question
    handling / deduplication
 -> claim classification                (src.listing_agent.agent.claim_categories)
 -> [--stage planner] STOP before any tool call is ever made
--> [--stage evidence] LocalToolExecutor (mock tools only, forced regardless
-   of TOOLS_MODE - never Nir's real MCP server or an external provider)
+-> [--stage evidence] LocalToolExecutor (mock tools, forced regardless of
+   TOOLS_MODE, unless --live-tools opts in to whatever TOOLS_MODE selects -
+   never an MCP server or an external provider either way)
 -> evidence_collector
 -> evidence_bundle_builder
 -> STOP before report_writer
 ```
 
-This script never imports/instantiates `McpToolExecutor`, any of Nir's real
-tool implementations, or `report_writer` - it reuses only the production
-entry points: `run_triage_planner`, `plan_validator.validate_plan`,
+This script never imports/instantiates `McpToolExecutor` or `report_writer`,
+and only reaches Nir's real tool implementations when `--live-tools` is
+passed explicitly - it reuses only the production entry points:
+`run_triage_planner`, `plan_validator.validate_plan`,
 `agent.claim_categories`, `evidence_mapper`, `agent.tool_input_builder`,
 `LocalToolExecutor`, `evidence_collector.collect_evidence`, and
 `evidence_bundle_builder.build_evidence_bundle` - and reuses the claim
@@ -32,6 +34,8 @@ Usage:
     python scripts/inspect_listing_pipeline.py --stage planner --scenario 2 --real-llm
     python scripts/inspect_listing_pipeline.py --stage evidence \
         --listing "..." --question "..." --fake-llm --json
+    python scripts/inspect_listing_pipeline.py --stage evidence --scenario 1 \
+        --fake-llm --live-tools        # real govmap/Overpass calls, no LLM cost
 """
 
 from __future__ import annotations
@@ -234,15 +238,27 @@ def _build_identified_claims_and_not_sent(
 # ------------------------------------------------------------------------
 
 
-def _mock_tool_executor(settings: Settings) -> LocalToolExecutor:
-    """A `LocalToolExecutor` always backed by the deterministic mock
-    tools, regardless of the process's own `TOOLS_MODE`/`TOOL_BACKEND` -
-    Evidence mode must never reach Nir's real implementations or any real
-    MCP/external provider."""
-    mock_settings = settings.model_copy(update={"tools_mode": "mock"})
-    return LocalToolExecutor(
-        get_tool_registry(mock_settings), timeout_seconds=settings.tool_timeout_seconds
+def _tool_executor(settings: Settings, *, live_tools: bool) -> tuple[LocalToolExecutor, str]:
+    """Build the Evidence-stage executor and report which tools it runs.
+
+    Defaults (`live_tools=False`) to a `LocalToolExecutor` backed by the
+    deterministic mock tools regardless of the process's own `TOOLS_MODE`,
+    so the diagnostic stays offline and reproducible by default.
+
+    With `--live-tools` (`live_tools=True`) it instead honours the
+    process's own `TOOLS_MODE`, which is the only way this script can
+    observe Nir's real implementations end to end. That reaches live
+    third-party HTTP APIs (govmap, Overpass) and is therefore always an
+    explicit opt-in, never the default. `TOOL_BACKEND` is still ignored:
+    this script only ever uses the in-process `LocalToolExecutor`, never
+    `McpToolExecutor` or any external provider.
+    """
+    tools_mode = settings.tools_mode.strip().lower() if live_tools else "mock"
+    executor_settings = settings.model_copy(update={"tools_mode": tools_mode})
+    executor = LocalToolExecutor(
+        get_tool_registry(executor_settings), timeout_seconds=settings.tool_timeout_seconds
     )
+    return executor, tools_mode
 
 
 def _sanitize_tool_results(tool_results: list[Any]) -> list[dict[str, Any]]:
@@ -386,6 +402,7 @@ async def build_pipeline_report(
     settings: Settings,
     llm_mode: str,
     stage: str,
+    live_tools: bool = False,
 ) -> dict[str, Any]:
     """Run the real pipeline for one (listing, question) pair, stopping
     before tool execution (`stage="planner"`) or before `report_writer`
@@ -401,7 +418,11 @@ async def build_pipeline_report(
         "llm_calls": sum(1 for step in tracer.get_steps() if step.type == "llm"),
         "planner_duration_ms": round(planner_duration_ms, 2),
         "planned_tool_calls_before_deduplication": len(raw_plan.tool_calls),
-        "tools_mode": "mock",
+        # Which implementations the Evidence stage would use. Forced to
+        # "mock" unless --live-tools was passed; see `_tool_executor`. In
+        # `--stage planner` no tool ever runs, so `tools_executed` stays
+        # empty regardless of what this reports.
+        "tools_mode": settings.tools_mode.strip().lower() if live_tools else "mock",
         "mcp_called": False,
         "external_provider_called": False,
         "report_writer_called": False,
@@ -464,7 +485,7 @@ async def build_pipeline_report(
     diagnostics["evidence_bundle_item_count"] = 0
 
     if stage == "evidence":
-        executor = _mock_tool_executor(settings)
+        executor, diagnostics["tools_mode"] = _tool_executor(settings, live_tools=live_tools)
         raw_tool_results, executed_tools = await collect_evidence(
             validated_plan,
             executor,
@@ -632,8 +653,11 @@ def render_text(scenario_id: str, report: dict[str, Any]) -> str:
         lines.append("")
 
     if report["input"]["stage"] == "evidence":
-        lines.append("10. MOCK TOOL EXECUTION RESULTS")
-        lines.append("-" * 31)
+        # Labelled with the mode actually used, so a --live-tools run is
+        # never mistaken for a mock one when reading a saved report.
+        heading = f"10. TOOL EXECUTION RESULTS ({report['diagnostics']['tools_mode']} tools)"
+        lines.append(heading)
+        lines.append("-" * len(heading))
         if not report["tool_results"]:
             lines.append("(no tool calls executed)")
         for result in report["tool_results"]:
@@ -714,6 +738,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Use FakeLLMClient with a pre-built plan. Requires --scenario.",
     )
 
+    parser.add_argument(
+        "--live-tools",
+        action="store_true",
+        help=(
+            "Run --stage evidence against the tools selected by TOOLS_MODE instead of "
+            "always forcing the mocks. With TOOLS_MODE=nir this makes real HTTP calls "
+            "to govmap and Overpass, so a run can take tens of seconds."
+        ),
+    )
+
     parser.add_argument("--json", action="store_true", help="Emit one JSON document instead.")
     parser.add_argument(
         "--allow-paid-batch",
@@ -777,7 +811,14 @@ async def _run_one(
     tracer = StepTracer()
     client, llm_mode = _build_client_for_scenario(scenario, args, settings, tracer)
     return await build_pipeline_report(
-        listing, question, client, tracer, settings, llm_mode, args.stage
+        listing,
+        question,
+        client,
+        tracer,
+        settings,
+        llm_mode,
+        args.stage,
+        live_tools=args.live_tools,
     )
 
 

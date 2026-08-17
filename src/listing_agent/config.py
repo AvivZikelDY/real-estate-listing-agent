@@ -25,9 +25,13 @@ class Settings(BaseSettings):
     mcp_server_url: str = ""
     mcp_request_timeout_seconds: float = 10.0
 
-    # Conservative per-call timeout applied by `LocalToolExecutor` (Phase 14)
-    # to every tool call, regardless of backend.
-    tool_timeout_seconds: float = 8.0
+    # Per-call timeout applied by `LocalToolExecutor` (Phase 14) to every
+    # tool call, regardless of backend. Sized for Nir's live tools: govmap
+    # answers in ~0.7-2.9s, but Overpass's mirror fallback can legitimately
+    # run tens of seconds (measured once at 41s) when the canonical mirror
+    # is overloaded. Kept in step with `DEFAULT_TOOL_TIMEOUT_SECONDS` in
+    # `agent/tool_executor/local.py`, which this value overrides at runtime.
+    tool_timeout_seconds: float = 120.0
 
     # --- Phase 17: request limits, deduplication, and execution deadlines ---
     # These are deterministic, pre-flight guardrails (never enforced with an
@@ -53,13 +57,19 @@ class Settings(BaseSettings):
     # spend actually executing tool calls in one request, across all
     # planned calls. Once exceeded, any remaining planned calls are skipped
     # (not attempted) rather than the whole request failing.
-    max_total_tool_execution_seconds: float = 20.0
+    #
+    # NOTE this budget is checked BEFORE each call, not enforced during one,
+    # so a single slow tool can overshoot it; it bounds how many further
+    # calls are attempted, not the duration of the one in flight.
+    max_total_tool_execution_seconds: float = 240.0
 
     # Overall deadline (seconds) for one `POST /api/execute` request,
-    # end-to-end (both LLM calls plus all tool execution). Comfortably
-    # below the assignment's 300-second ceiling, but a much smaller,
-    # practical default for a university project's normal-path latency.
-    request_deadline_seconds: float = 45.0
+    # end-to-end (both LLM calls plus all tool execution). This is a hard
+    # `asyncio.wait_for` in `api/routes.py`, so it must stay ABOVE
+    # `max_total_tool_execution_seconds` or it would cut requests short
+    # before the tool budget could ever apply. Kept under the assignment's
+    # 300-second ceiling.
+    request_deadline_seconds: float = 290.0
 
 
 def get_settings() -> Settings:
