@@ -21,6 +21,11 @@ while `overpass.kumi.systems` answered the identical query in full (82
 places around Rothschild 30). So `MIRRORS` is tried in order, and a dead
 mirror is a reason to move on rather than to fail.
 
+A mirror counts as dead on an HTTP 504/429/5xx **or** on a `remark` field
+inside a 200 OK body — Overpass reports its own internal timeouts that way,
+with an empty `elements` list, which would otherwise look exactly like "this
+area genuinely has nothing nearby". See `_post`.
+
 `NirNearbyServices.execute()` calls this live on every request, with no
 offline fallback — that mirror flakiness is exactly why `REQUEST_TIMEOUT_S`
 is generous and why `LocalToolExecutor` gives tool calls a wide timeout
@@ -191,10 +196,37 @@ class OverpassClient:
 
             response.raise_for_status()
             try:
-                return response.json()
+                data = response.json()
             except ValueError:
                 last_error = ToolProviderUnavailableError("Overpass returned a non-JSON response.")
                 continue
+
+            # An overloaded Overpass reports its OWN internal failure inside
+            # a 200 OK body, in a `remark` field ("runtime error: Query timed
+            # out ...", "Query run out of memory ..."), alongside an empty or
+            # truncated `elements` list. Trusting the status code alone
+            # therefore converts an overloaded mirror into a confident
+            # "nothing found nearby" — and the caller cannot tell that apart
+            # from a genuinely empty area, so it reaches the buyer's report
+            # as a verified fact. Observed live: the same query returned 0
+            # places on one run and 8 supermarkets (nearest 57m) on the next.
+            #
+            # So a remark is treated exactly like a 504: this mirror did not
+            # answer, try the next one. A remark that is only a warning (with
+            # otherwise complete results) costs us one extra mirror hop; a
+            # silent false negative would cost correctness, which is the
+            # worse trade.
+            remark = data.get("remark") if isinstance(data, dict) else None
+            if remark:
+                last_error = ToolProviderUnavailableError(
+                    f"Overpass reported an internal error: {remark}"
+                )
+                logger.warning(
+                    "Overpass mirror reported '%s', trying next: %s", remark, mirror
+                )
+                continue
+
+            return data
 
         # Every mirror failed.
         raise last_error or ToolProviderUnavailableError("No Overpass mirror answered.")
