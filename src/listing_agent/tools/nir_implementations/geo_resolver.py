@@ -32,8 +32,22 @@ THE RESULT CONTRACT (docs/nir_handoff.md)
 
     status="ok" + outcome="resolved"    -> one confident match
     status="ok" + outcome="ambiguous"   -> several plausible, none dominant
-    status="ok" + outcome="not_found"   -> no match at all
+    status="ok" + outcome="not_found"   -> no match at all, or nothing that
+                                           scored well enough to believe
     status="error"                      -> the tool itself broke
+
+TWO INDEPENDENT CONFIDENCE CHECKS
+---------------------------------
+A match must pass BOTH before it is reported as `resolved`:
+
+  1. an ABSOLUTE floor  (`_MIN_CONFIDENT_SCORE`) - is this match any good?
+  2. a RELATIVE gap     (`_DOMINANT_SCORE_RATIO`) - is it clearly better
+                                                   than the alternatives?
+
+Only having (2) was a real bug: govmap's fuzzy search always returns its
+best guesses and never says "no match", so when the type filter removed
+every rival, a junk match was left alone in the list and (2) waved it
+through by definition. See `_MIN_CONFIDENT_SCORE`.
 """
 
 import logging
@@ -62,6 +76,30 @@ _SOURCE = "govmap.gov.il (Israeli government address search)"
 #
 # 2.0 sits comfortably between the two clusters.
 _DOMINANT_SCORE_RATIO = 2.0
+
+# The lowest score a match may have and still be believed at all.
+#
+# `_DOMINANT_SCORE_RATIO` above is purely RELATIVE — it compares candidates
+# against each other. That leaves a hole: when the type filter below removes
+# every rival, a single weak survivor has nothing to be compared against and
+# was accepted as "confident" no matter how badly it scored. Live example
+# that motivated this floor: "כתובת לא קיימת 999 תל אביב" ("address does
+# not exist") had its two `transportation` matches filtered out, leaving one
+# `street` match for "הקרן קיימת" — scoring 202 — which was then reported as
+# a RESOLVED address roughly 5km away, and every dependent tool ran against
+# those wrong coordinates.
+#
+# Sampled from the live API (best addressable match per query):
+#   10 real addresses across 7 cities -> 2782 .. 7282
+#     lowest:  "יפו 97 ירושלים"        -> 2782
+#     highest: "ביאליק 25 רמת גן"      -> 7282
+#   nonsense queries                   ->  202 ..  269
+#     "כתובת לא קיימת 999 תל אביב"     ->  202  (street "הקרן קיימת")
+#     "רחוב שלא נמצא 777 חיפה"         ->  269  (settlement literally "רחוב")
+#
+# 1000 sits in the empty decade between the two clusters: ~2.8x below the
+# weakest real address and ~3.7x above the strongest nonsense match.
+_MIN_CONFIDENT_SCORE = 1000.0
 
 # How many alternatives to report when the outcome is ambiguous. Enough to
 # be useful to a reader, few enough to stay readable.
@@ -162,6 +200,24 @@ class NirGeoResolver:
                     return self._not_found(input_model.address)
 
                 best = usable[0]
+
+                # --- is the best match believable AT ALL? ----------------
+                # Checked before dominance, because dominance is only a
+                # relative test: with a single survivor there is nothing to
+                # compare against, so a junk match would otherwise pass
+                # unchallenged. If even the best candidate scores below the
+                # floor, the whole result set is noise and the honest answer
+                # is not_found — never a confident address 5km away.
+                if not self._clears_score_floor(best):
+                    logger.info(
+                        "govmap best match for %r scored %s, below the %.0f floor; "
+                        "reporting not_found",
+                        query,
+                        best.get("score"),
+                        _MIN_CONFIDENT_SCORE,
+                    )
+                    return self._not_found(input_model.address)
+
                 if not self._is_dominant(usable):
                     return self._ambiguous(usable)
 
@@ -196,6 +252,24 @@ class NirGeoResolver:
             )
 
     # --- decision logic ----------------------------------------------------
+
+    @staticmethod
+    def _clears_score_floor(result: dict) -> bool:
+        """Whether a match scores highly enough to be believed at all.
+
+        An ABSOLUTE check, deliberately separate from `_is_dominant`'s
+        relative one — see `_MIN_CONFIDENT_SCORE` for the sampled data
+        behind the threshold.
+
+        A missing or unparsable score is treated as failing the floor: the
+        API always sends one, so its absence means we cannot judge this
+        match, and guessing in favour of it is exactly the mistake this
+        check exists to prevent.
+        """
+        try:
+            return float(result.get("score", 0)) >= _MIN_CONFIDENT_SCORE
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def _is_dominant(results: list[dict]) -> bool:

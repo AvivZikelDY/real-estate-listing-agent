@@ -168,9 +168,13 @@ async def test_non_address_result_types_are_rejected(result_type: str) -> None:
 async def test_duplicate_candidate_names_are_deduplicated() -> None:
     """Listing "999, 999" as two options helps nobody choose."""
     results = [
-        {**_ROTHSCHILD, "text": "הרצל תל-אביב", "type": "street", "score": 300.0},
-        {**_ROTHSCHILD, "text": "הרצל תל-אביב", "type": "street", "score": 299.0},
-        {**_ROTHSCHILD, "text": "גבעת הרצל תל-אביב", "type": "street", "score": 298.0},
+        # Scores mirror the real "הרצל תל אביב" response: close enough that
+        # none dominates, but all comfortably above `_MIN_CONFIDENT_SCORE`,
+        # so this stays a test about deduplicating candidate NAMES rather
+        # than about the score floor (covered separately below).
+        {**_ROTHSCHILD, "text": "הרצל תל-אביב", "type": "street", "score": 3948.6},
+        {**_ROTHSCHILD, "text": "הרצל תל-אביב", "type": "street", "score": 3910.2},
+        {**_ROTHSCHILD, "text": "גבעת הרצל תל-אביב", "type": "street", "score": 3269.7},
     ]
     tool = NirGeoResolver(client_factory=_stub(results=results))
 
@@ -219,6 +223,96 @@ async def test_unknown_address_returns_not_found_not_an_error() -> None:
 async def test_match_without_a_usable_coordinate_is_not_found() -> None:
     """A name with no position is nothing to act on — never invent one."""
     tool = NirGeoResolver(client_factory=_stub(results=[{**_ROTHSCHILD, "shape": "GARBAGE"}]))
+
+    result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+
+
+# --- The absolute score floor (`_MIN_CONFIDENT_SCORE`) ---------------------
+#
+# Regression tests for a real false positive: govmap's fuzzy search never
+# says "no match", so a junk query still returns its best guesses. Once the
+# type filter removed the non-address ones, the single weak survivor was
+# accepted as `resolved` because the only confidence check was RELATIVE and
+# a lone candidate has no rival to lose to.
+
+
+@pytest.mark.asyncio
+async def test_lone_low_scoring_survivor_is_not_found_not_resolved() -> None:
+    """The exact live payload that resolved "address does not exist" to a real street.
+
+    Captured from govmap for "כתובת לא קיימת 999 תל אביב": two
+    `transportation` matches literally named "999" (filtered out by type),
+    leaving one `street` match for "הקרן קיימת" — scoring 202 against the
+    ~2800-7300 a genuine address scores. It was reported as a confident
+    address roughly 5km away, and every dependent tool then ran against
+    those coordinates.
+    """
+    results = [
+        {"id": "vts_DaAB", "text": "999", "type": "transportation", "score": 222.95834,
+         "shape": "MULTIPOINT (3907824.30 3870293.16)"},
+        {"id": "LBE_DaAB", "text": "999", "type": "transportation", "score": 220.71552,
+         "shape": "MULTIPOINT (3918985.30 3738188.70)"},
+        {"id": "street|STREET_MID_POINT|36187|הקרן קיימת|תל אביב",
+         "text": "הקרן קיימת תל אביב", "type": "street", "score": 202.316,
+         "shape": "POINT(3874629.383445255 3779145.1508724773)"},
+    ]
+    tool = NirGeoResolver(client_factory=_stub(results=results))
+
+    result = await tool.execute(
+        GeoResolverInput(address="כתובת לא קיימת 999", city_hint="תל אביב")
+    )
+
+    assert result.status == "ok"
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+    assert result.data.lat is None, "no coordinates may leak from a rejected match"
+    assert result.data.lon is None
+
+
+@pytest.mark.asyncio
+async def test_an_entire_low_scoring_result_set_is_not_found() -> None:
+    """If even the best candidate is junk, the alternatives are junk too.
+
+    Reporting these as `ambiguous` would present noise to the reader as a
+    list of plausible addresses to choose between.
+    """
+    results = [
+        {**_ROTHSCHILD, "text": "רחוב", "type": "settlement", "score": 269.1},
+        {**_ROTHSCHILD, "text": "רחובות", "type": "settlement", "score": 241.0},
+    ]
+    tool = NirGeoResolver(client_factory=_stub(results=results))
+
+    result = await tool.execute(GeoResolverInput(address="רחוב שלא נמצא 777 חיפה"))
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_a_genuine_address_at_the_low_end_still_resolves() -> None:
+    """The floor must not reject real addresses.
+
+    2782 is the weakest score seen across ten real addresses in seven
+    cities ("יפו 97 ירושלים"), so it has to stay comfortably resolvable.
+    """
+    tool = NirGeoResolver(
+        client_factory=_stub(results=[{**_ROTHSCHILD, "score": 2782.2979}])
+    )
+
+    result = await tool.execute(GeoResolverInput(address="יפו 97 ירושלים"))
+
+    assert result.data is not None
+    assert result.data.outcome == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_a_match_with_no_score_is_not_believed() -> None:
+    """An unjudgeable match must fail closed, not be waved through."""
+    payload = {k: v for k, v in _ROTHSCHILD.items() if k != "score"}
+    tool = NirGeoResolver(client_factory=_stub(results=[payload]))
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
