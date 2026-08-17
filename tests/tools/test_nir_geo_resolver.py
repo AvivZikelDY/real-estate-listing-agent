@@ -192,11 +192,15 @@ async def test_dominant_score_resolves_despite_extra_matches() -> None:
     Real behaviour for "שבזי 20 תל אביב": govmap returns near-miss noise
     alongside the obvious answer. Counting results would wrongly call this
     ambiguous.
+
+    The query names the same address as `_ROTHSCHILD` so that the
+    house-number check is satisfied and this stays a test of the DOMINANCE
+    rule alone.
     """
     noise = [{**_ROTHSCHILD, "text": f"noise {i}", "score": 515.0} for i in range(3)]
     tool = NirGeoResolver(client_factory=_stub(results=[_ROTHSCHILD, *noise]))
 
-    result = await tool.execute(GeoResolverInput(address="שבזי 20 תל אביב"))
+    result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
     assert result.data is not None
     assert result.data.outcome == "resolved"
@@ -230,17 +234,22 @@ async def test_match_without_a_usable_coordinate_is_not_found() -> None:
     assert result.data.outcome == "not_found"
 
 
-# --- The absolute score floor (`_MIN_CONFIDENT_SCORE`) ---------------------
+# --- The house-number check (`_HOUSE_NUMBER_RE`) ---------------------------
 #
 # Regression tests for a real false positive: govmap's fuzzy search never
 # says "no match", so a junk query still returns its best guesses. Once the
 # type filter removed the non-address ones, the single weak survivor was
 # accepted as `resolved` because the only confidence check was RELATIVE and
 # a lone candidate has no rival to lose to.
+#
+# The last two tests below are the reason this is a house-number check and
+# not a minimum score: the score depends on the QUERY WORDING, so a correct
+# match scores 4508 for a clean query and 236 for the prefixed form
+# triage_planner actually produces — overlapping the 202 of the junk match.
 
 
 @pytest.mark.asyncio
-async def test_lone_low_scoring_survivor_is_not_found_not_resolved() -> None:
+async def test_lone_junk_survivor_is_not_found_not_resolved() -> None:
     """The exact live payload that resolved "address does not exist" to a real street.
 
     Captured from govmap for "כתובת לא קיימת 999 תל אביב": two
@@ -273,8 +282,8 @@ async def test_lone_low_scoring_survivor_is_not_found_not_resolved() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_entire_low_scoring_result_set_is_not_found() -> None:
-    """If even the best candidate is junk, the alternatives are junk too.
+async def test_settlement_match_missing_the_house_number_is_not_found() -> None:
+    """Live case: "רחוב שלא נמצא 777 חיפה" matched a settlement named "רחוב".
 
     Reporting these as `ambiguous` would present noise to the reader as a
     list of plausible addresses to choose between.
@@ -292,32 +301,46 @@ async def test_an_entire_low_scoring_result_set_is_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_genuine_address_at_the_low_end_still_resolves() -> None:
-    """The floor must not reject real addresses.
+async def test_a_street_level_query_with_no_house_number_still_resolves() -> None:
+    """No number in the query means there is nothing to verify.
 
-    2782 is the weakest score seen across ten real addresses in seven
-    cities ("יפו 97 ירושלים"), so it has to stay comfortably resolvable.
+    "דיזנגוף תל אביב" is a legitimate street-level question, and a street
+    match is the honest answer to it — the check must not reject it.
     """
     tool = NirGeoResolver(
-        client_factory=_stub(results=[{**_ROTHSCHILD, "score": 2782.2979}])
+        client_factory=_stub(
+            results=[{**_ROTHSCHILD, "text": "דיזנגוף תל אביב", "type": "street"}]
+        )
     )
 
-    result = await tool.execute(GeoResolverInput(address="יפו 97 ירושלים"))
+    result = await tool.execute(GeoResolverInput(address="דיזנגוף תל אביב"))
 
     assert result.data is not None
     assert result.data.outcome == "resolved"
+    assert result.data.resolution_quality == "approximate"
 
 
 @pytest.mark.asyncio
-async def test_a_match_with_no_score_is_not_believed() -> None:
-    """An unjudgeable match must fail closed, not be waved through."""
-    payload = {k: v for k, v in _ROTHSCHILD.items() if k != "score"}
-    tool = NirGeoResolver(client_factory=_stub(results=[payload]))
+async def test_the_prefixed_address_form_the_planner_produces_still_resolves() -> None:
+    """The regression that a minimum-score floor caused, pinned as a test.
 
-    result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
+    `triage_planner` extracts "ברחוב רוטשילד 30 בתל אביב", not the clean
+    "רוטשילד 30 תל אביב". govmap returns the SAME correct match for both,
+    but scores it 236 instead of 4508 — below the junk match's 202-269
+    range. A score floor rejected this real address end to end; the
+    house-number check accepts it, because "30" is present in the match.
+    """
+    tool = NirGeoResolver(
+        client_factory=_stub(results=[{**_ROTHSCHILD, "score": 236.72229}])
+    )
+
+    result = await tool.execute(
+        GeoResolverInput(address="ברחוב רוטשילד 30 בתל אביב", city_hint="תל אביב")
+    )
 
     assert result.data is not None
-    assert result.data.outcome == "not_found"
+    assert result.data.outcome == "resolved"
+    assert result.data.normalized_address == "רוטשילד 30 תל אביב"
 
 
 # --- Requirement 3: an ambiguous address -----------------------------------
@@ -379,6 +402,69 @@ async def test_city_hint_is_not_duplicated_when_already_present() -> None:
     await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב", city_hint="תל אביב"))
 
     assert stub.last_query == "רוטשילד 30 תל אביב"
+
+
+# --- query normalization (`_FILLER_TOKENS`, city prefix) -------------------
+#
+# `triage_planner` extracts an address as a human wrote it. Both of these
+# were measured against the live API to turn an ordinary listing into an
+# unusable `ambiguous`, skipping every dependent tool.
+
+
+@pytest.mark.asyncio
+async def test_the_filler_word_street_is_dropped_from_the_query() -> None:
+    """"רחוב" appears in no street NAME, and dilutes the match.
+
+    Live: "ברחוב רוטשילד 30 בתל אביב" returned 10 matches at ratio 1.12 —
+    including Rothschild 30 in Ashdod and Kfar Saba — while the stripped
+    form returns one match and resolves.
+    """
+    stub = _stub(results=[_ROTHSCHILD])
+    tool = NirGeoResolver(client_factory=stub)
+
+    await tool.execute(
+        GeoResolverInput(address="ברחוב רוטשילד 30 בתל אביב", city_hint="תל אביב")
+    )
+
+    assert stub.last_query == "רוטשילד 30 תל אביב"
+
+
+@pytest.mark.asyncio
+async def test_the_city_prefix_is_removed_only_where_the_hint_identifies_it() -> None:
+    """"בתל אביב" -> "תל אביב", using the hint rather than guessing."""
+    stub = _stub(results=[_ROTHSCHILD])
+    tool = NirGeoResolver(client_factory=stub)
+
+    await tool.execute(GeoResolverInput(address="דיזנגוף 100 בתל אביב", city_hint="תל אביב"))
+
+    assert stub.last_query == "דיזנגוף 100 תל אביב"
+
+
+@pytest.mark.asyncio
+async def test_a_street_name_beginning_with_the_prefix_letter_is_untouched() -> None:
+    """Guard against over-eager prefix stripping.
+
+    "ביאליק" starts with the same letter as the "ב" prefix. Removing it
+    would search for a street that does not exist, so one-letter prefixes
+    are only ever removed where `city_hint` identifies the exact string.
+    """
+    stub = _stub(results=[_ROTHSCHILD])
+    tool = NirGeoResolver(client_factory=stub)
+
+    await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן", city_hint="רמת גן"))
+
+    assert stub.last_query == "ביאליק 25 רמת גן"
+
+
+@pytest.mark.asyncio
+async def test_an_address_that_is_only_filler_falls_back_to_the_original() -> None:
+    """Stripping must never leave an empty query."""
+    stub = _stub(results=[_ROTHSCHILD])
+    tool = NirGeoResolver(client_factory=stub)
+
+    await tool.execute(GeoResolverInput(address="רחוב"))
+
+    assert stub.last_query == "רחוב"
 
 
 # --- neighbourhood lookup is best-effort -----------------------------------

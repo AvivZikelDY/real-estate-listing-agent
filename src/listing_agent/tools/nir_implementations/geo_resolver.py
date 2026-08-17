@@ -40,17 +40,20 @@ TWO INDEPENDENT CONFIDENCE CHECKS
 ---------------------------------
 A match must pass BOTH before it is reported as `resolved`:
 
-  1. an ABSOLUTE floor  (`_MIN_CONFIDENT_SCORE`) - is this match any good?
-  2. a RELATIVE gap     (`_DOMINANT_SCORE_RATIO`) - is it clearly better
-                                                   than the alternatives?
+  1. CONTENT  (`_HOUSE_NUMBER_RE`)      - did we get back the house number
+                                          we actually asked for?
+  2. RELATIVE (`_DOMINANT_SCORE_RATIO`) - is it clearly better than the
+                                          alternatives?
 
 Only having (2) was a real bug: govmap's fuzzy search always returns its
 best guesses and never says "no match", so when the type filter removed
 every rival, a junk match was left alone in the list and (2) waved it
-through by definition. See `_MIN_CONFIDENT_SCORE`.
+through by definition. Note that (1) deliberately is NOT a minimum score —
+see `_HOUSE_NUMBER_RE` for why that approach fails.
 """
 
 import logging
+import re
 
 from src.listing_agent.tools.nir_implementations.coordinates import (
     parse_wkt_point,
@@ -77,29 +80,50 @@ _SOURCE = "govmap.gov.il (Israeli government address search)"
 # 2.0 sits comfortably between the two clusters.
 _DOMINANT_SCORE_RATIO = 2.0
 
-# The lowest score a match may have and still be believed at all.
+# Any run of 1-4 digits: a house number in a query, or in a matched name.
 #
-# `_DOMINANT_SCORE_RATIO` above is purely RELATIVE — it compares candidates
-# against each other. That leaves a hole: when the type filter below removes
-# every rival, a single weak survivor has nothing to be compared against and
-# was accepted as "confident" no matter how badly it scored. Live example
-# that motivated this floor: "כתובת לא קיימת 999 תל אביב" ("address does
-# not exist") had its two `transportation` matches filtered out, leaving one
-# `street` match for "הקרן קיימת" — scoring 202 — which was then reported as
-# a RESOLVED address roughly 5km away, and every dependent tool ran against
-# those wrong coordinates.
+# >>> WHY NOT AN ABSOLUTE SCORE FLOOR <<<
+# The obvious guard against a weak match is a minimum score, and it does not
+# work: govmap's score is RELATIVE TO THE QUERY STRING, not a measure of how
+# good the match is. Measured on the live API, the identical correct match
+# for Rothschild 30 scores
+#     "רוטשילד 30 תל אביב"          -> 4508   (clean)
+#     "ברחוב רוטשילד 30 בתל אביב"   ->  236   (as triage_planner extracts it)
+# while the junk match that motivated this check scores 202. Real addresses
+# and nonsense therefore OVERLAP on score, and any floor high enough to
+# reject the junk also rejects real listings — a floor of 1000 was tried and
+# broke Rothschild 30 end to end.
 #
-# Sampled from the live API (best addressable match per query):
-#   10 real addresses across 7 cities -> 2782 .. 7282
-#     lowest:  "יפו 97 ירושלים"        -> 2782
-#     highest: "ביאליק 25 רמת גן"      -> 7282
-#   nonsense queries                   ->  202 ..  269
-#     "כתובת לא קיימת 999 תל אביב"     ->  202  (street "הקרן קיימת")
-#     "רחוב שלא נמצא 777 חיפה"         ->  269  (settlement literally "רחוב")
+# The house number is the signal that actually separates them. govmap's
+# fuzzy search matches on words, so nonsense text can land on a real STREET
+# ("כתובת לא קיימת 999" -> "הקרן קיימת", on the shared word "קיימת"), but
+# the number we asked for is simply absent from what came back. A query that
+# names a house number and gets a match without it did not find that
+# address.
+_HOUSE_NUMBER_RE = re.compile(r"\d{1,4}")
+
+# Structural filler dropped from the query before it is sent.
 #
-# 1000 sits in the empty decade between the two clusters: ~2.8x below the
-# weakest real address and ~3.7x above the strongest nonsense match.
-_MIN_CONFIDENT_SCORE = 1000.0
+# `triage_planner` extracts an address as a human wrote it — "ברחוב רוטשילד
+# 30 בתל אביב" — and the word "רחוב"/"street" actively harms the search,
+# because govmap scores on word overlap and that word appears in no street
+# NAME. Measured on the live API:
+#
+#   "ברחוב רוטשילד 30 בתל אביב" -> 10 matches, top 235.8, runner-up 211.1
+#                                  (Rothschild 30 in Ashdod and Kfar Saba)
+#                                  ratio 1.12 -> reported AMBIGUOUS
+#   "רוטשילד 30 בתל אביב"       ->  1 match,  608.1  -> resolves cleanly
+#
+# So the filler both depressed the score and dragged in same-numbered
+# addresses from other cities, turning a perfectly ordinary listing into an
+# unusable "ambiguous" and skipping every dependent tool.
+#
+# ONLY this structural word is removed. Hebrew one-letter prefixes ("ב" in
+# "בתל אביב") are deliberately left alone: they attach directly to the next
+# word, so stripping them would corrupt real street names that simply begin
+# with those letters ("ביאליק" -> "יאליק"). "שדרות" is likewise left alone —
+# it is also a real city (Sderot).
+_FILLER_TOKENS = frozenset({"רחוב", "ברחוב", "רח'", "ברח'"})
 
 # How many alternatives to report when the outcome is ambiguous. Enough to
 # be useful to a reader, few enough to stay readable.
@@ -174,9 +198,21 @@ class NirGeoResolver:
             # search is one free-text box. Appending it is what turns the
             # hopeless "דיזנגוף" (six equal matches across six cities) into
             # something resolvable.
-            query = input_model.address.strip()
-            if input_model.city_hint and input_model.city_hint.strip().lower() not in query.lower():
-                query = f"{query} {input_model.city_hint.strip()}"
+            query = self._strip_filler(input_model.address)
+
+            hint = (input_model.city_hint or "").strip()
+            if hint:
+                # "בתל אביב" -> "תל אביב". Removing a one-letter Hebrew
+                # prefix is unsafe in general (it would maul street names
+                # beginning with the same letter), but it is safe HERE
+                # because `city_hint` tells us the exact string the city is,
+                # so nothing is guessed. Measured: "ברחוב דיזנגוף 100 בתל
+                # אביב" is ambiguous (Dizengoff 100 exists in several
+                # cities) while "דיזנגוף 100 תל אביב" scores 4886 and
+                # resolves outright.
+                query = query.replace(f"ב{hint}", hint)
+                if hint.lower() not in query.lower():
+                    query = f"{query} {hint}"
 
             async with self._client_factory() as client:
                 results = await client.autocomplete(query)
@@ -201,20 +237,17 @@ class NirGeoResolver:
 
                 best = usable[0]
 
-                # --- is the best match believable AT ALL? ----------------
+                # --- did we get back the house number we asked for? ------
                 # Checked before dominance, because dominance is only a
-                # relative test: with a single survivor there is nothing to
-                # compare against, so a junk match would otherwise pass
-                # unchallenged. If even the best candidate scores below the
-                # floor, the whole result set is noise and the honest answer
-                # is not_found — never a confident address 5km away.
-                if not self._clears_score_floor(best):
+                # RELATIVE test: once the type filter removes every rival, a
+                # lone junk match has nothing to lose to and is waved through
+                # by definition. See `_HOUSE_NUMBER_RE`.
+                if not self._house_number_matches(query, best):
                     logger.info(
-                        "govmap best match for %r scored %s, below the %.0f floor; "
+                        "govmap best match %r for %r lacks the requested house number; "
                         "reporting not_found",
+                        best.get("text"),
                         query,
-                        best.get("score"),
-                        _MIN_CONFIDENT_SCORE,
                     )
                     return self._not_found(input_model.address)
 
@@ -254,22 +287,37 @@ class NirGeoResolver:
     # --- decision logic ----------------------------------------------------
 
     @staticmethod
-    def _clears_score_floor(result: dict) -> bool:
-        """Whether a match scores highly enough to be believed at all.
+    def _strip_filler(address: str) -> str:
+        """Drop structural filler words from an address before searching.
 
-        An ABSOLUTE check, deliberately separate from `_is_dominant`'s
-        relative one — see `_MIN_CONFIDENT_SCORE` for the sampled data
-        behind the threshold.
-
-        A missing or unparsable score is treated as failing the floor: the
-        API always sends one, so its absence means we cannot judge this
-        match, and guessing in favour of it is exactly the mistake this
-        check exists to prevent.
+        See `_FILLER_TOKENS` for what is removed and, more importantly, what
+        deliberately is not. Falls back to the original text if stripping
+        would leave nothing to search for.
         """
-        try:
-            return float(result.get("score", 0)) >= _MIN_CONFIDENT_SCORE
-        except (TypeError, ValueError):
-            return False
+        tokens = [token for token in address.split() if token not in _FILLER_TOKENS]
+        return " ".join(tokens) if tokens else address.strip()
+
+    @staticmethod
+    def _house_number_matches(query: str, result: dict) -> bool:
+        """Whether the match carries a house number the query asked for.
+
+        A CONTENT check, deliberately independent of `_is_dominant`'s
+        relative score comparison — see `_HOUSE_NUMBER_RE` for why score
+        cannot do this job.
+
+        Returns True when the query names no number at all: "דיזנגוף תל
+        אביב" is a legitimate street-level query, and a street-level match
+        is the honest answer to it (reported as `approximate` quality).
+
+        Any overlap counts, rather than requiring every number to appear: a
+        planner-extracted address can carry incidental digits, and demanding
+        all of them would reject real matches.
+        """
+        wanted = set(_HOUSE_NUMBER_RE.findall(query))
+        if not wanted:
+            return True
+        found = set(_HOUSE_NUMBER_RE.findall(str(result.get("text") or "")))
+        return bool(wanted & found)
 
     @staticmethod
     def _is_dominant(results: list[dict]) -> bool:
