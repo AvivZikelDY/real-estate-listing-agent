@@ -17,6 +17,18 @@ Do:
 - Extract raw_address, asking_price, rooms, and sqm exactly as stated. Leave \
 a field null if the prompt does not state it, and add its name to \
 missing_information — never guess or infer a value.
+- raw_address must be a searchable address, not a quotation. Two \
+normalizations apply to it, and only these two: (a) include the city or \
+settlement whenever the listing names one ANYWHERE in the text, even in a \
+different sentence than the street - write it as "<street> <number>, \
+<city>"; (b) write the street name without a leading Hebrew preposition, \
+so "בשמואל תמיר 2" becomes "שמואל תמיר 2" and "ברחוב דיזנגוף 30" becomes \
+"דיזנגוף 30". Remove that letter ONLY when what remains is still the real \
+street name - "ביאליק" and "בארי" are street names that begin with the \
+same letter, not prepositions, and must be left exactly as they are. \
+Never add a city the listing does not name, never correct a street's \
+spelling, and never apply either normalization to claim text, which is \
+still copied verbatim.
 - Extract listing claims and classify each as "factual" (a checkable fact) \
 or "subjective" (an opinion/adjective like "beautiful", "charming", \
 "cozy"). Subjective claims must never, by themselves, cause a tool to be \
