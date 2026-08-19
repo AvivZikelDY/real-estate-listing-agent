@@ -26,6 +26,26 @@ inside a 200 OK body — Overpass reports its own internal timeouts that way,
 with an empty `elements` list, which would otherwise look exactly like "this
 area genuinely has nothing nearby". See `_post`.
 
+>>> EVERY MIRROR MUST SERVE THE WHOLE PLANET <<<
+------------------------------------------------
+This is a hard requirement on the `MIRRORS` list, not a preference. Several
+public Overpass instances carry only one country's extract, and a query
+outside their coverage is answered `200 OK` with `elements: []` and NO
+`remark` — indistinguishable, at this layer, from an area that genuinely
+has nothing in it.
+
+That is not hypothetical: `overpass.osm.ch` (Switzerland only) sat at the
+end of this list, and on a run where both mirrors ahead of it were down
+(timeout, then HTTP 504) it answered a central Tel Aviv query with zero
+elements. `nearby_services` reported `status="ok"` with `place_count=0`,
+and the buyer's report stated as fact that a listing on Dizengoff had no
+nearby services at all. Verified while fixing this: the identical query
+returns 0 elements from `overpass.osm.ch` and 14 from the global mirrors,
+while a ZURICH query returns 11 from it.
+
+There is no way to detect this from a response, so it has to be prevented
+by only ever listing global instances here.
+
 `NirNearbyServices.execute()` calls this live on every request, with no
 offline fallback — that mirror flakiness is exactly why `REQUEST_TIMEOUT_S`
 is generous and why `LocalToolExecutor` gives tool calls a wide timeout
@@ -50,10 +70,13 @@ logger = logging.getLogger(__name__)
 
 # Tried in order. The first mirror is the canonical one but is the least
 # reliable in practice; the second answered when the first timed out.
+# ALL THREE MUST BE GLOBAL INSTANCES - see the module docstring.
 MIRRORS: tuple[str, ...] = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
+    # Global instance, verified against a Tel Aviv query while replacing
+    # `overpass.osm.ch`, which silently serves Switzerland only.
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 )
 
 # Overpass rejects requests with a default library User-Agent (HTTP 406).
