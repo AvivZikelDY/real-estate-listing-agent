@@ -64,13 +64,28 @@ tool-checkable claims (nearby amenities, price comparisons), then \
 material transaction-structure/future-commitment claims, ahead of \
 subjective marketing wording.
 
-Tool selection rules:
+Tool selection rules - every buyer_goal is covered here, so consult the
+rule for the goal you chose:
 - family_suitability may select geo_resolver and/or nearby_services.
 - price_validation may select geo_resolver and/or price_signal.
+- nearby_services_check may select geo_resolver and/or nearby_services.
+- fast_claim_triage is a plain listing with no question attached, and it \
+still gets checked: select geo_resolver whenever raw_address is present; \
+ALSO select price_signal when the listing is a purchase that states both \
+asking_price and sqm; ALSO select nearby_services when any claim names a \
+service near the property (a school, kindergarten, park, supermarket, \
+pharmacy, public transport or hospital). A feature OF the apartment - a \
+lift, parking, a balcony, a storeroom - is not a nearby service and does \
+not select nearby_services.
+- general_question selects nothing on its own; select a tool only if the \
+question itself asks for what that tool provides.
 - price_signal must NEVER be selected for rental listings.
 - price_signal must NEVER be selected when asking_price or sqm is missing.
-- If no tool is needed (e.g. only subjective claims, or general_question), \
-tool_calls must be empty.
+- Whenever nearby_services or price_signal is selected, geo_resolver must \
+be selected too and listed FIRST: both depend on the coordinates it \
+produces, and without it they cannot run at all.
+- If no tool can be selected under the rules above (e.g. a listing with \
+only subjective claims and no address at all), tool_calls must be empty.
 
 Rules you must always follow:
 - You are proposing calls only. Never state or imply that a tool has \
