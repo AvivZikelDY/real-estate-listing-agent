@@ -45,6 +45,7 @@ class _StubClient:
     """
 
     results: list[dict] = []
+    queries: list[str] = []
     polygons: list[str] = ["7442-22"]
     deals: list[ComparableDeal] = []
     raise_on_autocomplete: Exception | None = None
@@ -56,7 +57,12 @@ class _StubClient:
         return None
 
     async def autocomplete(self, search_text: str) -> list[dict]:
+        # Every query is recorded, not just the last: the street-level
+        # fallback issues a SECOND autocomplete, so "what did the tool ask
+        # for?" now has more than one answer and the tests below assert on
+        # `queries[0]`, the query the tool actually starts from.
         type(self).last_query = search_text
+        type(self).queries = [*type(self).queries, search_text]
         if self.raise_on_autocomplete is not None:
             raise self.raise_on_autocomplete
         return self.results
@@ -76,6 +82,7 @@ def _stub(**attrs) -> type[_StubClient]:
         "deals": [],
         "raise_on_autocomplete": None,
         "last_query": None,
+        "queries": [],
     }
     return type("_Stub", (_StubClient,), {**defaults, **attrs})
 
@@ -391,7 +398,7 @@ async def test_city_hint_is_folded_into_the_query() -> None:
 
     await tool.execute(GeoResolverInput(address="דיזנגוף", city_hint="תל אביב"))
 
-    assert stub.last_query == "דיזנגוף תל אביב"
+    assert stub.queries[0] == "דיזנגוף תל אביב"
 
 
 @pytest.mark.asyncio
@@ -401,7 +408,7 @@ async def test_city_hint_is_not_duplicated_when_already_present() -> None:
 
     await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב", city_hint="תל אביב"))
 
-    assert stub.last_query == "רוטשילד 30 תל אביב"
+    assert stub.queries[0] == "רוטשילד 30 תל אביב"
 
 
 # --- query normalization (`_FILLER_TOKENS`, city prefix) -------------------
@@ -426,7 +433,7 @@ async def test_the_filler_word_street_is_dropped_from_the_query() -> None:
         GeoResolverInput(address="ברחוב רוטשילד 30 בתל אביב", city_hint="תל אביב")
     )
 
-    assert stub.last_query == "רוטשילד 30 תל אביב"
+    assert stub.queries[0] == "רוטשילד 30 תל אביב"
 
 
 @pytest.mark.asyncio
@@ -437,7 +444,7 @@ async def test_the_city_prefix_is_removed_only_where_the_hint_identifies_it() ->
 
     await tool.execute(GeoResolverInput(address="דיזנגוף 100 בתל אביב", city_hint="תל אביב"))
 
-    assert stub.last_query == "דיזנגוף 100 תל אביב"
+    assert stub.queries[0] == "דיזנגוף 100 תל אביב"
 
 
 @pytest.mark.asyncio
@@ -453,7 +460,7 @@ async def test_a_street_name_beginning_with_the_prefix_letter_is_untouched() -> 
 
     await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן", city_hint="רמת גן"))
 
-    assert stub.last_query == "ביאליק 25 רמת גן"
+    assert stub.queries[0] == "ביאליק 25 רמת גן"
 
 
 @pytest.mark.asyncio
@@ -464,7 +471,7 @@ async def test_an_address_that_is_only_filler_falls_back_to_the_original() -> No
 
     await tool.execute(GeoResolverInput(address="רחוב"))
 
-    assert stub.last_query == "רחוב"
+    assert stub.queries[0] == "רחוב"
 
 
 # --- neighbourhood lookup is best-effort -----------------------------------
@@ -544,3 +551,281 @@ async def test_tool_executes_through_the_registry() -> None:
     assert result.status == "ok"
     assert result.data is not None
     assert result.data.outcome == "resolved"
+
+
+# --- The street-level fallback when a house number is not indexed ----------
+#
+# All payloads below were captured live for "שמואל תמיר 2, תל אביב", the
+# listing address that reported not_found end to end and skipped every
+# dependent tool. govmap holds the street (score 4592.9) and holds numbers
+# 1, 3, 9, 13, 15, 17, 23, 27, 29, 31, 33, 37, 45 and 47 on it — but not 2.
+
+_SHMUEL_TAMIR_NUMBERS = [
+    {"id": "address|ADDR|1|שמואל תמיר|23|תל אביב", "text": "שמואל תמיר 23 תל אביב",
+     "type": "address", "score": 275.6, "shape": "POINT(3872000.0 3776000.0)"},
+    {"id": "address|ADDR|2|שמואל תמיר|29|תל אביב", "text": "שמואל תמיר 29 תל-אביב",
+     "type": "address", "score": 275.6, "shape": "POINT(3872100.0 3776100.0)"},
+    {"id": "address|ADDR|3|שמואל תמיר|31|תל אביב", "text": "שמואל תמיר 31 תל-אביב",
+     "type": "address", "score": 275.6, "shape": "POINT(3872200.0 3776200.0)"},
+]
+_SHMUEL_TAMIR_STREET = {
+    "id": "street|STREET_MID_POINT|40122|שמואל תמיר|תל אביב",
+    "text": "שמואל תמיר תל אביב",
+    "type": "street",
+    "score": 4592.9,
+    "shape": "POINT(3872050.0 3776050.0)",
+}
+
+
+def _stub_by_query(mapping: dict[str, list[dict]], **attrs) -> type[_StubClient]:
+    """A stub that answers differently per search text.
+
+    The fallback issues a SECOND autocomplete, so a single fixed response
+    cannot express these cases.
+    """
+
+    class _ByQuery(_StubClient):
+        async def autocomplete(self, search_text: str) -> list[dict]:
+            type(self).last_query = search_text
+            type(self).queries = [*type(self).queries, search_text]
+            return mapping.get(search_text, [])
+
+    return type("_Stub", (_ByQuery,), {"queries": [], "last_query": None, **attrs})
+
+
+@pytest.mark.asyncio
+async def test_a_house_number_missing_from_the_index_falls_back_to_the_street() -> None:
+    """The live regression: a real listing that resolved to nothing.
+
+    Every match govmap returns is on the right street and none of them is
+    number 2, so the house-number check rejects the best match. Reporting
+    not_found there also skipped nearby_services and price_signal, leaving
+    the whole listing unchecked — while the same query WITHOUT the number
+    resolves cleanly.
+    """
+    tool = NirGeoResolver(
+        client_factory=_stub_by_query(
+            {
+                # Live behaviour. The prefixed forms return numbered
+                # addresses and no street at all; only dropping the "ב"
+                # surfaces the street govmap actually holds.
+                "בשמואל תמיר 2, תל אביב": _SHMUEL_TAMIR_NUMBERS,
+                "בשמואל תמיר תל אביב": _SHMUEL_TAMIR_NUMBERS,
+                "שמואל תמיר 2, תל אביב": _SHMUEL_TAMIR_NUMBERS,
+                "שמואל תמיר תל אביב": [_SHMUEL_TAMIR_STREET],
+            },
+            deals=[_deal("רמת אביב")],
+        )
+    )
+
+    result = await tool.execute(
+        GeoResolverInput(address="בשמואל תמיר 2, תל אביב", city_hint="תל אביב")
+    )
+
+    assert result.data is not None
+    assert result.data.outcome == "resolved"
+    assert result.data.normalized_address == "שמואל תמיר תל אביב"
+    # Never "exact": the building itself was not matched.
+    assert result.data.resolution_quality == "approximate"
+    assert result.data.lat is not None and result.data.lon is not None
+    assert any("2" in limitation for limitation in result.data.limitations), (
+        "the missing house number must be stated, not silently dropped"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_removes_only_the_house_number() -> None:
+    """The retries ask progressively less, and never more.
+
+    The listing's own wording is always tried first, in full; the house
+    number goes before the preposition does; and the preposition is only
+    dropped once every faithful form has failed. No step ever adds
+    anything the listing did not say.
+    """
+    stub = _stub_by_query(
+        {
+            "בשמואל תמיר 2, תל אביב": _SHMUEL_TAMIR_NUMBERS,
+            "בשמואל תמיר תל אביב": _SHMUEL_TAMIR_NUMBERS,
+            "שמואל תמיר 2, תל אביב": _SHMUEL_TAMIR_NUMBERS,
+            "שמואל תמיר תל אביב": [_SHMUEL_TAMIR_STREET],
+        }
+    )
+    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+
+    await tool.execute(GeoResolverInput(address="בשמואל תמיר 2, תל אביב", city_hint="תל אביב"))
+
+    assert stub.queries == [
+        # What the listing said, unchanged - always asked first.
+        "בשמואל תמיר 2, תל אביב",
+        # Same wording, house number dropped: is the street itself there?
+        "בשמואל תמיר תל אביב",
+        # Only now is the "ב" dropped, and only because everything the
+        # listing literally said has already failed.
+        "שמואל תמיר 2, תל אביב",
+        "שמואל תמיר תל אביב",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_does_not_resurrect_the_junk_match() -> None:
+    """The hole the fallback must not re-open.
+
+    "כתובת לא קיימת 999 תל אביב" fuzzy-matches the real street
+    "הקרן קיימת" on the single shared word "קיימת". Dropping the house
+    number and accepting whatever street comes back would hand that junk a
+    confident answer again — so the name check rejects it.
+    """
+    junk_street = {
+        "id": "street|STREET_MID_POINT|36187|הקרן קיימת|תל אביב",
+        "text": "הקרן קיימת תל אביב",
+        "type": "street",
+        "score": 202.316,
+        "shape": "POINT(3874629.383445255 3779145.1508724773)",
+    }
+    tool = NirGeoResolver(
+        client_factory=_stub_by_query(
+            {
+                "כתובת לא קיימת 999 תל אביב": [junk_street],
+                "כתובת לא קיימת תל אביב": [junk_street],
+            }
+        )
+    )
+
+    result = await tool.execute(
+        GeoResolverInput(address="כתובת לא קיימת 999", city_hint="תל אביב")
+    )
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+    assert result.data.lat is None
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_refuses_anything_coarser_than_a_street() -> None:
+    """A settlement match means the street itself was never found."""
+    settlement = {**_ROTHSCHILD, "text": "רחוב", "type": "settlement", "score": 269.1}
+    tool = NirGeoResolver(
+        client_factory=_stub_by_query(
+            {"רחוב שלא נמצא 777 חיפה": [settlement], "רחוב שלא נמצא חיפה": [settlement]}
+        )
+    )
+
+    result = await tool.execute(GeoResolverInput(address="רחוב שלא נמצא 777 חיפה"))
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_stays_unresolved_between_two_similar_streets() -> None:
+    """Dominance still applies: two plausible streets are not an answer."""
+    streets = [
+        {**_SHMUEL_TAMIR_STREET, "text": "שמואל תמיר תל אביב", "score": 4592.9},
+        {**_SHMUEL_TAMIR_STREET, "text": "שמואל תמיר רמת גן", "score": 4400.0},
+    ]
+    tool = NirGeoResolver(
+        client_factory=_stub_by_query(
+            {"שמואל תמיר 2": _SHMUEL_TAMIR_NUMBERS, "שמואל תמיר": streets}
+        )
+    )
+
+    result = await tool.execute(GeoResolverInput(address="שמואל תמיר 2"))
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+
+
+# --- The Hebrew preposition on the street name -----------------------------
+#
+# "ב" means "in/at" and is written joined to the next word, so a listing
+# that says where a flat IS hands us a street name that does not exist.
+# govmap scores on word overlap and is unforgiving about it - measured:
+#   "בשמואל תמיר 2 תל אביב" -> the WRONG street ("תמיר"), top score 225.5
+#   "שמואל תמיר 2 תל אביב"  -> the right street, top score 275.6
+
+
+@pytest.mark.asyncio
+async def test_a_prefixed_street_name_is_retried_without_the_prefix() -> None:
+    """The faithful query is asked first, and its failure is not the end."""
+    prefixed_miss = [
+        {"id": "address|ADDR|9|תמיר|15|תל אביב", "text": "תמיר 15 תל אביב",
+         "type": "address", "score": 225.5, "shape": "POINT(3880000.0 3780000.0)"},
+        {"id": "address|ADDR|9|תמיר|3|תל אביב", "text": "תמיר 3 תל אביב",
+         "type": "address", "score": 225.5, "shape": "POINT(3880100.0 3780100.0)"},
+    ]
+    correct = {**_ROTHSCHILD, "text": "שמואל תמיר 2 תל אביב", "score": 4500.0}
+    stub = _stub_by_query(
+        {
+            "בשמואל תמיר 2 תל אביב": prefixed_miss,
+            "שמואל תמיר 2 תל אביב": [correct],
+        }
+    )
+    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+
+    result = await tool.execute(
+        GeoResolverInput(address="בשמואל תמיר 2 תל אביב", city_hint="תל אביב")
+    )
+
+    assert result.data is not None
+    assert result.data.outcome == "resolved"
+    assert result.data.normalized_address == "שמואל תמיר 2 תל אביב"
+    assert stub.queries[0] == "בשמואל תמיר 2 תל אביב", "the listing's wording goes first"
+
+
+@pytest.mark.asyncio
+async def test_the_retry_must_still_name_the_place_the_listing_named() -> None:
+    """Dropping a letter must not be allowed to change the answer.
+
+    Stripping "ב" off a street that really begins with it ("ביאליק" ->
+    "יאליק") searches for something that does not exist. Whatever govmap
+    replies with then has to be checked back against the original wording,
+    or the retry would quietly resolve a different street.
+    """
+    stub = _stub_by_query(
+        {
+            "ביאליק 25 רמת גן": [],
+            # A plausible-looking but different street, as a fuzzy search
+            # for a non-existent name would return.
+            "יאליק 25 רמת גן": [{**_ROTHSCHILD, "text": "יהלום 25 רמת גן"}],
+        }
+    )
+    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+
+    result = await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן"))
+
+    assert result.data is not None
+    assert result.data.outcome == "not_found"
+    assert result.data.lat is None
+
+
+@pytest.mark.asyncio
+async def test_a_street_that_really_begins_with_the_prefix_letter_still_resolves() -> None:
+    """The retry is additive: it cannot cost a match the faithful query got."""
+    bialik = {**_ROTHSCHILD, "text": "ביאליק 25 רמת גן"}
+    stub = _stub_by_query({"ביאליק 25 רמת גן": [bialik]}, deals=[_deal("מרכז")])
+    tool = NirGeoResolver(client_factory=stub)
+
+    result = await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן"))
+
+    assert result.data is not None
+    assert result.data.outcome == "resolved"
+    assert result.data.normalized_address == "ביאליק 25 רמת גן"
+    # Resolved on the first ask, so the prefix-stripped form is never sent.
+    assert stub.queries == ["ביאליק 25 רמת גן"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_retry_reports_the_faithful_query_outcome() -> None:
+    """`ambiguous` beats the retry's `not_found`: it carries candidates.
+
+    The reader can act on a list of places to choose between; they cannot
+    act on silence produced by a question the listing never asked.
+    """
+    stub = _stub_by_query({"בהרצל תל אביב": _HERZL_AMBIGUOUS, "הרצל תל אביב": []})
+    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+
+    result = await tool.execute(GeoResolverInput(address="בהרצל תל אביב"))
+
+    assert result.data is not None
+    assert result.data.outcome == "ambiguous"
+    assert result.data.candidates

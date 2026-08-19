@@ -50,6 +50,35 @@ best guesses and never says "no match", so when the type filter removed
 every rival, a junk match was left alone in the list and (2) waved it
 through by definition. Note that (1) deliberately is NOT a minimum score —
 see `_HOUSE_NUMBER_RE` for why that approach fails.
+
+WHEN THE HOUSE NUMBER IS NOT IN THE INDEX
+-----------------------------------------
+Failing (1) does not always mean "this address is not real". govmap's
+address index is incomplete for new construction: measured live,
+"שמואל תמיר תל אביב" resolves as a street at score 4592.9, and the index
+holds numbers 1, 3, 9, 13, 15, 17, 23, 27, 29, 31, 33, 37, 45 and 47 on
+it — but not 2, the number an actual listing on that street advertises.
+Reporting `not_found` there was strictly worse than useless: it also
+skipped `nearby_services` and `price_signal`, so a real listing came back
+with nothing checked at all, while dropping the house number from the very
+same query resolved fine. Adding information made the answer worse.
+
+So a query whose house number is missing from the match falls back ONCE to
+the same query without the number (`_street_level_match`). The fallback is
+deliberately narrow, because it re-opens the exact hole (1) was added to
+close — a junk query would otherwise land on a real street:
+
+  * the fallback match must be `type="street"` (not a settlement or a
+    neighbourhood: we asked for a specific street, and anything coarser
+    means the street itself was not found);
+  * it must still be dominant among the streets returned;
+  * every word of the queried name must actually appear in it
+    (`_street_name_matches`), which is what still rejects
+    "כתובת לא קיימת 999 תל אביב" -> "הקרן קיימת" — they share only the
+    word "קיימת".
+
+A successful fallback is reported as `resolved` at `approximate` quality
+with the missing house number stated in `limitations`, never as `exact`.
 """
 
 import logging
@@ -102,6 +131,27 @@ _DOMINANT_SCORE_RATIO = 2.0
 # address.
 _HOUSE_NUMBER_RE = re.compile(r"\d{1,4}")
 
+# A token that is nothing but a house number, e.g. "2" or the "2," that
+# survives when a listing writes "שמואל תמיר 2, תל אביב". Dropped from the
+# query by `_street_level_match` to ask about the street alone.
+_DIGIT_ONLY_TOKEN_RE = re.compile(r"^[\W_]*\d{1,4}[\W_]*$")
+
+# Hebrew one-letter prefixes that attach directly to the following word
+# ("בשמואל" = "at Shmuel"). These are NEVER stripped from a query — doing so
+# would corrupt street names that genuinely begin with those letters
+# ("ביאליק" -> "יאליק"). They are stripped only when COMPARING two names in
+# `_street_name_matches`, where both spellings are already in hand and
+# nothing is being guessed. This matters: `triage_planner` copies a listing
+# verbatim, so the address arrives as "בשמואל תמיר 2" while govmap's own
+# spelling is "שמואל תמיר" — the same street, one letter apart.
+_HEBREW_ONE_LETTER_PREFIXES = frozenset("בהלמושכ")
+
+# Shortest word worth comparing. Below this a "match" is mostly noise.
+_MIN_COMPARABLE_TOKEN_LEN = 2
+
+# Only strip a prefix from a word long enough to still be a word without it.
+_MIN_PREFIXED_TOKEN_LEN = 4
+
 # Structural filler dropped from the query before it is sent.
 #
 # `triage_planner` extracts an address as a human wrote it — "ברחוב רוטשילד
@@ -153,6 +203,17 @@ _QUALITY_BY_TYPE: dict[str, str] = {
 # reported that gibberish as an `ambiguous` address with candidates
 # ["999", "999"], instead of the honest `not_found`.
 _ADDRESSABLE_TYPES = frozenset(_QUALITY_BY_TYPE)
+
+# Stated on every street-level fallback, because a reader must never take
+# these coordinates for the building's own position: govmap's street point
+# is the mid-point of the whole street (its own id calls it
+# STREET_MID_POINT), which on a long street is a considerable distance from
+# any given number.
+_MISSING_HOUSE_NUMBER_NOTE = (
+    "House number {numbers} is not in the government address index for this street, "
+    "so the position is the street itself rather than the building; the street was "
+    "matched, the specific building was not."
+)
 
 _STRAIGHT_LINE_NOTE = (
     "Coordinates are the centre point govmap records for the matched address, "
@@ -215,64 +276,34 @@ class NirGeoResolver:
                     query = f"{query} {hint}"
 
             async with self._client_factory() as client:
-                results = await client.autocomplete(query)
+                # The listing's own wording is always asked first.
+                result = await self._search(client, query, input_model.address)
+                if self._is_resolved(result):
+                    return result
 
-                # --- no match at all: a successful "this is not real" -----
-                if not results:
-                    return self._not_found(input_model.address)
+                # It did not resolve. If the street name carries a Hebrew
+                # one-letter preposition, ask again without it - see
+                # `_without_leading_prefix`. Anything that comes back must
+                # name the same street as the original query, so this can
+                # correct a spelling without ever changing the question.
+                alternate = self._without_leading_prefix(query)
+                if alternate is None:
+                    return result
 
-                # --- keep only things that are actually addresses --------
-                # govmap indexes roads, junctions and transport features in
-                # the same search. They are not places to live, and letting
-                # them through turns nonsense queries into confident-looking
-                # answers. See `_ADDRESSABLE_TYPES`.
-                usable = [
-                    r
-                    for r in results
-                    if isinstance(r, dict)
-                    and str(r.get("type", "")).lower() in _ADDRESSABLE_TYPES
-                ]
-                if not usable:
-                    return self._not_found(input_model.address)
-
-                best = usable[0]
-
-                # --- did we get back the house number we asked for? ------
-                # Checked before dominance, because dominance is only a
-                # RELATIVE test: once the type filter removes every rival, a
-                # lone junk match has nothing to lose to and is waved through
-                # by definition. See `_HOUSE_NUMBER_RE`.
-                if not self._house_number_matches(query, best):
-                    logger.info(
-                        "govmap best match %r for %r lacks the requested house number; "
-                        "reporting not_found",
-                        best.get("text"),
-                        query,
-                    )
-                    return self._not_found(input_model.address)
-
-                if not self._is_dominant(usable):
-                    return self._ambiguous(usable)
-
-                # --- one confident match: extract coordinates ------------
-                point = parse_wkt_point(best.get("shape"))
-                if point is None:
-                    # Matched a name but got no usable position. There is
-                    # nothing to act on, so this is honestly "not found"
-                    # rather than a fabricated coordinate.
-                    logger.info("govmap match for %r carried no parsable point", query)
-                    return self._not_found(input_model.address)
-
-                # THE CONTRACT BOUNDARY: govmap works in Web Mercator
-                # metres, the schema requires WGS84 degrees. This is the one
-                # place the conversion is needed.
-                lat, lon = web_mercator_to_wgs84(*point)
-
-                neighborhood = None
-                if self._resolve_neighborhood:
-                    neighborhood = await self._lookup_neighborhood(client, point)
-
-                return self._resolved(best, lat, lon, neighborhood)
+                logger.info(
+                    "%r did not resolve; retrying without the leading prefix as %r",
+                    query,
+                    alternate,
+                )
+                retry = await self._search(
+                    client, alternate, input_model.address, verify_against=query
+                )
+                # The faithful query's own outcome is what gets reported if
+                # the retry fails too: it is the honest answer to what the
+                # listing actually said, and `ambiguous` carries candidates
+                # a reader can use, where the retry's `not_found` carries
+                # nothing.
+                return retry if self._is_resolved(retry) else result
 
         except Exception as exc:
             # Last-resort safety net: an unreachable data source or any
@@ -283,6 +314,161 @@ class NirGeoResolver:
                 status="error",
                 error=f"geo_resolver could not complete: {type(exc).__name__}: {exc}",
             )
+
+    @staticmethod
+    def _is_resolved(result: ToolResult[GeoResolverOutput]) -> bool:
+        return result.data is not None and result.data.outcome == "resolved"
+
+    @staticmethod
+    def _without_leading_prefix(query: str) -> str | None:
+        """`query` with a Hebrew one-letter preposition taken off its first
+        word, or `None` when there is nothing to take off.
+
+        "בשמואל תמיר 2" -> "שמואל תמיר 2". The letter means "in/at" and is
+        written joined to the noun, so a listing that says where a flat IS
+        hands us a street name that does not exist. govmap scores on word
+        overlap and is unforgiving about it - measured live:
+
+            "בשמואל תמיר 2 תל אביב" -> 9 rows for the WRONG street ("תמיר"),
+                                       top score 225.5
+            "שמואל תמיר 2 תל אביב"  -> 9 rows for the right street,
+                                       top score 275.6
+            "בשמואל תמיר תל אביב"   -> no street row at all
+            "שמואל תמיר תל אביב"    -> the street, at 4592.9
+
+        This is why the query is never rewritten in place: "ביאליק" begins
+        with the same letter and is a real street name, so stripping it
+        blindly searches for a street that does not exist. The stripped form
+        is only ever an ADDITIONAL attempt, made after the faithful one
+        failed, and whatever it returns is checked back against the original
+        wording by `_street_name_matches`. Confirmed on that exact case -
+        govmap answers "יאליק רמת גן" with ביאליק addresses and no street,
+        so the attempt yields nothing rather than anything wrong.
+        """
+        tokens = query.split()
+        if not tokens:
+            return None
+        first = tokens[0]
+        if len(first) < _MIN_PREFIXED_TOKEN_LEN or first[0] not in _HEBREW_ONE_LETTER_PREFIXES:
+            return None
+        return " ".join([first[1:], *tokens[1:]])
+
+    async def _search(
+        self,
+        client: GovmapClient,
+        query: str,
+        address: str,
+        *,
+        verify_against: str | None = None,
+    ) -> ToolResult[GeoResolverOutput]:
+        """One full search: ask govmap `query`, and decide what came back.
+
+        Args:
+            query: The exact text sent to govmap.
+            address: The caller's original address, used only for the
+                `not_found` message a reader sees.
+            verify_against: When set, the match must also NAME the same
+                place as this text (`_street_name_matches`) before it counts
+                as resolved. Set on the prefix-stripped retry, where the
+                question asked is no longer exactly the one the listing
+                asked; left unset for the faithful query, whose whole value
+                is govmap's fuzzy matching - it is what turns the typo
+                "דיזנגוג 50" into "דיזנגוף 50", and a name check there would
+                reject that.
+        """
+        results = await client.autocomplete(query)
+
+        # --- no match at all: a successful "this is not real" -----
+        if not results:
+            return self._not_found(address)
+
+        # --- keep only things that are actually addresses --------
+        # govmap indexes roads, junctions and transport features in
+        # the same search. They are not places to live, and letting
+        # them through turns nonsense queries into confident-looking
+        # answers. See `_ADDRESSABLE_TYPES`.
+        usable = [
+            r
+            for r in results
+            if isinstance(r, dict) and str(r.get("type", "")).lower() in _ADDRESSABLE_TYPES
+        ]
+        if not usable:
+            return self._not_found(address)
+
+        best = usable[0]
+
+        # --- did we get back the house number we asked for? ------
+        # Checked before dominance, because dominance is only a
+        # RELATIVE test: once the type filter removes every rival, a
+        # lone junk match has nothing to lose to and is waved through
+        # by definition. See `_HOUSE_NUMBER_RE`.
+        # A missing house number is not automatically a fake
+        # address — govmap's index simply does not carry every
+        # building. One narrow fallback asks about the street
+        # alone; see the module docstring for why it cannot be
+        # any wider than it is.
+        missing_number_note: str | None = None
+        if not self._house_number_matches(query, best):
+            street = await self._street_level_match(client, query, verify_against or query)
+            if street is None:
+                logger.info(
+                    "govmap best match %r for %r lacks the requested house number "
+                    "and no street-level match backs it up; reporting not_found",
+                    best.get("text"),
+                    query,
+                )
+                return self._not_found(address)
+            logger.info(
+                "house number missing from the index for %r; falling back to the "
+                "street-level match %r",
+                query,
+                street.get("text"),
+            )
+            best = street
+            missing_number_note = _MISSING_HOUSE_NUMBER_NOTE.format(
+                numbers=", ".join(sorted(set(_HOUSE_NUMBER_RE.findall(query))))
+            )
+        else:
+            # Dominance is only meaningful for the ORIGINAL result set:
+            # the fallback ran its own dominance check over the streets
+            # it got back, and `usable` describes a different query.
+            if not self._is_dominant(usable):
+                return self._ambiguous(usable)
+            # A rewritten query has to prove it landed on the place the
+            # listing named; the faithful query does not, because fuzzy
+            # matching is exactly what it is there for.
+            if verify_against and not self._street_name_matches(
+                verify_against, str(best.get("text") or "")
+            ):
+                logger.info(
+                    "retry match %r does not name the same place as %r; discarding it",
+                    best.get("text"),
+                    verify_against,
+                )
+                return self._not_found(address)
+
+        # --- one confident match: extract coordinates ------------
+        point = parse_wkt_point(best.get("shape"))
+        if point is None:
+            # Matched a name but got no usable position. There is
+            # nothing to act on, so this is honestly "not found"
+            # rather than a fabricated coordinate.
+            logger.info("govmap match for %r carried no parsable point", query)
+            return self._not_found(address)
+
+        # THE CONTRACT BOUNDARY: govmap works in Web Mercator
+        # metres, the schema requires WGS84 degrees. This is the one
+        # place the conversion is needed.
+        lat, lon = web_mercator_to_wgs84(*point)
+
+        neighborhood = None
+        if self._resolve_neighborhood:
+            neighborhood = await self._lookup_neighborhood(client, point)
+
+        return self._resolved(
+            best, lat, lon, neighborhood, extra_limitation=missing_number_note
+        )
+
 
     # --- decision logic ----------------------------------------------------
 
@@ -318,6 +504,126 @@ class NirGeoResolver:
             return True
         found = set(_HOUSE_NUMBER_RE.findall(str(result.get("text") or "")))
         return bool(wanted & found)
+
+    async def _street_level_match(
+        self, client: GovmapClient, query: str, verify_against: str
+    ) -> dict | None:
+        """The street a numbered query names, when the number is not indexed.
+
+        Re-runs the SAME query with the house number removed and returns the
+        matched street, or `None` when nothing survives the checks below —
+        in which case the caller reports `not_found`, exactly as before.
+
+        Costs one extra HTTP call, and only ever on this failure path.
+
+        THE CHECKS ARE THE WHOLE POINT. `_house_number_matches` exists
+        because govmap's fuzzy search lands nonsense on real streets, and a
+        fallback that simply accepted the street would undo it. So:
+
+          1. `type == "street"` only. A settlement or neighbourhood match
+             means the street was never found — "רחוב שלא נמצא 777 חיפה"
+             matches a settlement literally named "רחוב".
+          2. Still dominant among the streets returned, so an address that
+             is genuinely ambiguous between two streets stays unresolved.
+          3. The name must actually match (`_street_name_matches`), which
+             is what keeps "כתובת לא קיימת 999" from resolving to
+             "הקרן קיימת".
+        """
+        for street_query in self._street_queries(query):  # noqa: PLR1702 - flat enough
+            results = await client.autocomplete(street_query)
+            streets = [
+                r
+                for r in results
+                if isinstance(r, dict) and str(r.get("type", "")).lower() == "street"
+            ]
+            if not streets or not self._is_dominant(streets):
+                continue
+
+            best = streets[0]
+            if not self._street_name_matches(verify_against, str(best.get("text") or "")):
+                logger.info(
+                    "street-level fallback rejected: %r does not name the same street as %r",
+                    best.get("text"),
+                    query,
+                )
+                continue
+            return best
+        return None
+
+    @staticmethod
+    def _street_queries(query: str) -> list[str]:
+        """The form of `query` that asks about the street alone: the same
+        text with the house number removed.
+
+        Just the one form. Stripping the Hebrew preposition is handled a
+        level up, by `execute`, which re-runs the WHOLE search on the
+        stripped wording - so this helper never has to know about it, and a
+        query that needs both corrections gets them without either one
+        being applied twice.
+        """
+        tokens = [t for t in query.split() if not _DIGIT_ONLY_TOKEN_RE.match(t)]
+        if not tokens:
+            return []
+        # Nothing was actually removed: the fallback would just repeat the
+        # query that already failed.
+        stripped = " ".join(tokens)
+        if stripped == query:
+            return []
+        return [stripped]
+
+    @staticmethod
+    def _name_tokens(text: str) -> list[str]:
+        """Words worth comparing in an address, punctuation and digits gone.
+
+        Punctuation is flattened rather than split on, so "תל-אביב" and
+        "תל אביב" — govmap returns both spellings for the same city —
+        tokenize identically.
+        """
+        cleaned = re.sub(r"[^\w\s]", " ", text)
+        return [
+            token
+            for token in cleaned.split()
+            if len(token) >= _MIN_COMPARABLE_TOKEN_LEN and not token.isdigit()
+        ]
+
+    @staticmethod
+    def _token_variants(token: str) -> set[str]:
+        """A word and, if it carries one, the same word without its prefix.
+
+        Comparison only — see `_HEBREW_ONE_LETTER_PREFIXES`.
+        """
+        variants = {token}
+        if len(token) >= _MIN_PREFIXED_TOKEN_LEN and token[0] in _HEBREW_ONE_LETTER_PREFIXES:
+            variants.add(token[1:])
+        return variants
+
+    @classmethod
+    def _street_name_matches(cls, query: str, matched_text: str) -> bool:
+        """Whether `matched_text` names the same place the query asked for.
+
+        EVERY word of the query must appear in the match. That is
+        deliberately strict, because this is the only thing standing
+        between the street-level fallback and the junk matches
+        `_HOUSE_NUMBER_RE` was written to reject:
+
+            "בשמואל תמיר 2 תל אביב" vs "שמואל תמיר תל אביב"  -> True
+                (every word present; "בשמואל" matches via its prefix)
+            "כתובת לא קיימת 999 תל אביב" vs "הקרן קיימת תל אביב" -> False
+                (only "קיימת" is shared — the fuzzy hit that started all
+                 of this)
+
+        The cost of being strict is that an address padded with words that
+        are not part of its name ("קומה 3") loses the fallback and reports
+        `not_found`, which is the safe direction to fail in.
+        """
+        matched: set[str] = set()
+        for token in cls._name_tokens(matched_text):
+            matched |= cls._token_variants(token)
+        if not matched:
+            return False
+        return all(
+            cls._token_variants(token) & matched for token in cls._name_tokens(query)
+        )
 
     @staticmethod
     def _is_dominant(results: list[dict]) -> bool:
@@ -388,12 +694,20 @@ class NirGeoResolver:
         lat: float,
         lon: float,
         neighborhood: str | None,
+        extra_limitation: str | None = None,
     ) -> ToolResult[GeoResolverOutput]:
-        """One confident match."""
+        """One confident match.
+
+        `extra_limitation` carries anything the caller learned on the way to
+        this match that the match itself cannot express — currently only the
+        street-level fallback's missing house number.
+        """
         result_type = str(best.get("type", "")).lower()
         quality = _QUALITY_BY_TYPE.get(result_type, "low_confidence")
 
         limitations = [_STRAIGHT_LINE_NOTE]
+        if extra_limitation:
+            limitations.append(extra_limitation)
         if quality != "exact":
             limitations.append(
                 f"Matched at '{result_type or 'unknown'}' level rather than a specific "
