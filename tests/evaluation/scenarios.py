@@ -25,7 +25,10 @@ from src.listing_agent.tools.registry import ToolRegistry
 from src.listing_agent.tools.schemas import NearbyServicesInput, ToolResult
 
 KNOWN_ADDRESS = "HaYarkon 120, Tel Aviv"
-UNKNOWN_ADDRESS = "99 Imaginary Ave, Nowhere"
+# Imaginary street, real city. An address naming no recognised city is
+# refused before the tool runs now (`_NO_CITY_HINT_REASON`), and that is a
+# scenario of its own - see `address_without_a_city` below.
+UNKNOWN_ADDRESS = "99 Imaginary Ave, Tel Aviv"
 
 
 class _AlwaysFailingNearbyServices:

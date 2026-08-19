@@ -3,9 +3,12 @@ normalization (Phase 18 claim-linkage correction), and for the shared,
 single-implementation contract itself.
 """
 
+import pytest
+
 import scripts.inspect_triage_plan as script
 from src.listing_agent.agent.schemas import Claim, PropertyDetails, ToolCall
 from src.listing_agent.agent.tool_input_builder import (
+    MissingDependencyError,
     build_tool_input,
     extract_city_hint,
     extract_nearby_categories_argument,
@@ -13,7 +16,11 @@ from src.listing_agent.agent.tool_input_builder import (
     normalize_nearby_categories,
     resolve_nearby_categories,
 )
-from src.listing_agent.tools.schemas import GeoResolverOutput, NearbyServicesInput
+from src.listing_agent.tools.schemas import (
+    GeoResolverInput,
+    GeoResolverOutput,
+    NearbyServicesInput,
+)
 
 
 def test_extract_city_hint_finds_known_city() -> None:
@@ -232,3 +239,60 @@ def test_build_tool_input_uses_services_argument_for_nearby_services() -> None:
     result = build_tool_input(call, details, geo_output=_resolved_geo_output())
     assert isinstance(result, NearbyServicesInput)
     assert result.categories == ["park", "school"]
+
+
+# --- An address that names no city stops the run ---------------------------
+#
+# Live behaviour that motivated this: "בשמואל תמיר 2" with no city returned
+# a single best match in BE'ER SHEVA, plus three matches in other towns.
+# govmap searches the whole country when it has nothing to narrow by, so a
+# city-less address is not a weaker question - it is a different one.
+
+
+def test_an_address_naming_no_city_refuses_to_run_geo_resolver() -> None:
+    """No city, no run: the tool is never given a country-wide guess to make."""
+    call = ToolCall(tool="geo_resolver", arguments={})
+    details = PropertyDetails(listing_type="purchase", raw_address="בשמואל תמיר 2")
+
+    with pytest.raises(MissingDependencyError) as excinfo:
+        build_tool_input(call, details, geo_output=None)
+
+    assert excinfo.value.tool == "geo_resolver"
+    # The reason has to name the address, because it becomes the buyer-facing
+    # "skipped because ..." line in the evidence bundle.
+    assert "בשמואל תמיר 2" in excinfo.value.reason
+
+
+def test_the_refusal_is_lifted_as_soon_as_the_address_names_a_city() -> None:
+    call = ToolCall(tool="geo_resolver", arguments={})
+    details = PropertyDetails(listing_type="purchase", raw_address="בשמואל תמיר 2, תל אביב")
+
+    result = build_tool_input(call, details, geo_output=None)
+
+    assert isinstance(result, GeoResolverInput)
+    assert result.city_hint == "תל אביב"
+
+
+def test_city_matching_is_case_insensitive_and_returns_canonical_spelling() -> None:
+    """"TEL AVIV" is the same city as "Tel Aviv" and must not stop a run."""
+    assert extract_city_hint("120 HaYarkon St, TEL AVIV") == "Tel Aviv"
+
+
+def test_a_city_name_containing_another_one_wins() -> None:
+    """"אור יהודה" contains "יהוד"; the longer, more specific name must win."""
+    assert extract_city_hint("הרצל 5, אור יהודה") == "אור יהודה"
+
+
+def test_gush_dan_cities_beyond_tel_aviv_are_recognised() -> None:
+    assert extract_city_hint("ז'בוטינסקי 10, פתח תקווה") == "פתח תקווה"
+    assert extract_city_hint("ביאליק 25, רמת גן") == "רמת גן"
+    assert extract_city_hint("שמואל 3, גבעת שמואל") == "גבעת שמואל"
+
+
+def test_azor_is_not_matched_as_a_city() -> None:
+    """"אזור" is also the everyday word for "area".
+
+    Matching it would turn "באזור מוקף גינות" - ordinary listing prose - into
+    a confident city hint, and send the search to the wrong town.
+    """
+    assert extract_city_hint("רחוב כלשהו 5, באזור מוקף גינות") is None

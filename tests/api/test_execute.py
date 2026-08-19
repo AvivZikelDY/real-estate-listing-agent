@@ -16,7 +16,9 @@ from src.listing_agent.tools.dependency import get_tool_registry
 client = TestClient(app)
 
 KNOWN_ADDRESS = "HaYarkon 120, Tel Aviv"
-UNKNOWN_ADDRESS = "1 Nowhere St, Atlantis"
+# See the note in tests/agent/test_orchestrator.py: imaginary street,
+# real city, so the address reaches geo_resolver and fails there.
+UNKNOWN_ADDRESS = "1 Nowhere St, Tel Aviv"
 
 
 def _override_dependencies(plan: TriagePlan, report: str = "A concise triage report.") -> None:

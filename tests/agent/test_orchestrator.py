@@ -13,7 +13,10 @@ from src.listing_agent.llm.triage_planner.planner import MODULE_NAME as TRIAGE_P
 from src.listing_agent.tools.dependency import get_tool_registry
 
 KNOWN_ADDRESS = "HaYarkon 120, Tel Aviv"
-UNKNOWN_ADDRESS = "1 Nowhere St, Atlantis"
+# Imaginary street, real city: an address that names no recognised city
+# is refused before geo_resolver runs (`_NO_CITY_HINT_REASON`), which is a
+# different scenario from one that reaches the tool and does not resolve.
+UNKNOWN_ADDRESS = "1 Nowhere St, Tel Aviv"
 
 
 def _client_with_plan(plan: TriagePlan, report: str = "A concise triage report.") -> FakeLLMClient:

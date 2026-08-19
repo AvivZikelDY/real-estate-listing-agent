@@ -67,7 +67,10 @@ async def test_unresolvable_geo_resolver_does_not_abort_remaining_calls() -> Non
             ToolCall(tool="geo_resolver", arguments={}),
             ToolCall(tool="nearby_services", arguments={}),
         ],
-        raw_address="1 Nowhere St, Atlantis",
+        # A real city with an imaginary street: the address genuinely
+            # does not resolve, rather than being refused up front for
+            # naming no city (`_NO_CITY_HINT_REASON`).
+            raw_address="1 Nowhere St, Tel Aviv",
     )
     tracer = StepTracer()
 
@@ -183,3 +186,44 @@ async def test_generous_time_budget_does_not_affect_normal_execution() -> None:
 
     assert executed == ["geo_resolver", "nearby_services"]
     assert all(evidence.status == "ok" for evidence in tool_results)
+
+
+async def test_an_address_with_no_city_is_reported_back_to_the_evidence_bundle() -> None:
+    """No city named, no location work - and the bundle says exactly that.
+
+    The tool is never executed, so this is `status="skipped"` rather than an
+    error or a `not_found`: nothing was checked and nothing was found, and
+    conflating the three would let the report imply the address was looked
+    up and rejected. Everything downstream of coordinates skips with it.
+    """
+    plan = _plan(
+        [
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={}),
+        ],
+        raw_address="בשמואל תמיר 2",
+    )
+    tracer = StepTracer()
+
+    tool_results, executed = await collect_evidence(plan, _mock_executor(), tracer)
+
+    assert executed == [], "no tool may run without a city to search in"
+    geo_evidence, nearby_evidence = tool_results
+    assert geo_evidence.tool == "geo_resolver"
+    assert geo_evidence.status == "skipped"
+    assert geo_evidence.output is None
+    assert "city" in geo_evidence.reason
+    assert "בשמואל תמיר 2" in geo_evidence.reason
+    assert nearby_evidence.status == "skipped"
+
+
+async def test_the_no_city_skip_is_recorded_in_the_trace() -> None:
+    """A skipped tool must still appear as a step, never vanish silently."""
+    plan = _plan([ToolCall(tool="geo_resolver", arguments={})], raw_address="בשמואל תמיר 2")
+    tracer = StepTracer()
+
+    await collect_evidence(plan, _mock_executor(), tracer)
+
+    steps = tracer.get_steps()
+    assert len(steps) == 1
+    assert steps[0].step == "geo_resolver"
