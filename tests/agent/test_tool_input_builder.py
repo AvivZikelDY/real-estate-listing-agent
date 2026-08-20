@@ -296,3 +296,29 @@ def test_azor_is_not_matched_as_a_city() -> None:
     a confident city hint, and send the search to the wrong town.
     """
     assert extract_city_hint("רחוב כלשהו 5, באזור מוקף גינות") is None
+
+
+def test_a_city_name_inside_a_longer_word_is_not_a_city() -> None:
+    """Caught by the end-to-end scenarios, not by anything smaller.
+
+    "בן יהודה 45" is a Tel Aviv street that names no city at all, but the
+    four letters of יהוד sit inside יהודה - so the address looked like it
+    named a city, the no-city rule did not fire, and geo_resolver answered
+    with בן יהודה 45 in Nes Ziyyona, Haifa and two other towns. The word is
+    common in Israeli street names: בן יהודה, יהודה הנשיא, יהודה המכבי.
+    """
+    assert extract_city_hint("בן יהודה 45") is None
+    assert extract_city_hint("יהודה הנשיא 30") is None
+    # The city itself, standing on its own, still matches.
+    assert extract_city_hint("הרצל 5, יהוד") == "יהוד"
+
+
+def test_a_hebrew_preposition_before_a_city_still_matches() -> None:
+    """Only the character AFTER a match is checked.
+
+    Hebrew one-letter prepositions attach to the front of the word, so
+    refusing a preceding letter would reject "בתל אביב" - the common case
+    this whole function exists to catch.
+    """
+    assert extract_city_hint("שמואל תמיר 2, בתל אביב") == "תל אביב"
+    assert extract_city_hint("דיזנגוף 100 בתל אביב") == "תל אביב"

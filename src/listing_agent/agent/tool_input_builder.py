@@ -205,9 +205,36 @@ def extract_city_hint(raw_address: str | None) -> str | None:
         return None
     lowered = raw_address.lower()
     for city in _KNOWN_CITY_HINTS:
-        if city.lower() in lowered:
+        if _names_city(lowered, city.lower()):
             return city
     return None
+
+
+def _names_city(lowered_address: str, lowered_city: str) -> bool:
+    """Whether `lowered_address` names this city, rather than merely
+    containing its letters.
+
+    A plain substring test is not enough, and this was not theoretical: the
+    address "בן יהודה 45" - a Tel Aviv street with no city in it at all -
+    matched the city יהוד, because those four letters sit inside יהודה. The
+    address then looked like it named a city, the no-city rule did not fire,
+    and geo_resolver answered with בן יהודה 45 in Nes Ziyyona, Haifa and two
+    other towns. "יהודה" is not a rare word in Israeli street names either -
+    בן יהודה, יהודה הנשיא, יהודה המכבי.
+
+    So a match must not be followed by another letter. Only the FOLLOWING
+    character is checked, never the preceding one: Hebrew one-letter
+    prepositions attach to the front ("בתל אביב" = "in Tel Aviv"), and
+    refusing those would throw away the common case this function exists
+    for.
+    """
+    start = lowered_address.find(lowered_city)
+    while start != -1:
+        end = start + len(lowered_city)
+        if end >= len(lowered_address) or not lowered_address[end].isalpha():
+            return True
+        start = lowered_address.find(lowered_city, start + 1)
+    return False
 
 
 def normalize_nearby_categories(raw_categories: object) -> list[NearbyServiceCategory]:

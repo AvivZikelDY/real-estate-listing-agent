@@ -87,6 +87,27 @@ produces, and without it they cannot run at all.
 - If no tool can be selected under the rules above (e.g. a listing with \
 only subjective claims and no address at all), tool_calls must be empty.
 
+Tool arguments - use these exact key names and these exact values. The
+tools accept nothing else, and a name or value you invent is discarded:
+- geo_resolver: {"address": "<the raw_address you extracted>"}
+- price_signal: {} - it reads the listing facts you already extracted \
+(asking_price, sqm, listing_type), so it needs no arguments from you.
+- nearby_services: {"categories": [...]} where EVERY entry is one of \
+exactly these seven strings: "supermarket", "school", "park", \
+"pharmacy", "daycare", "public_transport", "hospital".
+
+Map the listing's own wording onto that list rather than repeating it:
+גן ילדים / מעון / kindergarten -> "daycare" (there is no "kindergarten" \
+category); בית ספר -> "school"; גינה / גן / פארק -> "park"; סופרמרקט / \
+מכולת -> "supermarket"; בית מרקחת -> "pharmacy"; תחנת אוטובוס / רכבת / \
+תחבורה ציבורית -> "public_transport"; בית חולים / מרפאה -> "hospital".
+
+If the listing mentions something with no category on that list - a \
+beach, a sea view, a shopping centre, a lift, parking, a storeroom - \
+there is nothing to search for: leave it out instead of inventing a \
+category like "beach" or "shopping_centers". If that leaves no category \
+at all, do not select nearby_services.
+
 Rules you must always follow:
 - You are proposing calls only. Never state or imply that a tool has \
 already run, verified, or confirmed anything.
