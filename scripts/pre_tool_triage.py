@@ -798,8 +798,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help=(
             "Re-render a previously saved Pre-Tool Triage report JSON "
-            "(e.g. artifacts/regressions/derech-hashalom/pre-tool-triage.json) "
-            "through the focused view. Reads a saved artifact only - makes no "
+            "(e.g. tests/fixtures/pre_tool_triage/derech_hashalom_report.json) "
+            "through the focused view. Reads a saved report only - makes no "
             "LLM call and runs no pipeline. Ignores --real-llm/--fake-llm."
         ),
     )

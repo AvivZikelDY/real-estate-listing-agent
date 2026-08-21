@@ -1,8 +1,7 @@
 """Deterministic regression for the Hapalmach 21 nearby-category fan-out.
 
 Captures a real-listing failure diagnosed from ONE authorized real LLMod
-planner call for the Hapalmach 21 listing (see
-`artifacts/regressions/hapsalmach-21/`), reproduced here WITHOUT any LLM
+planner call for the Hapalmach 21 listing, reproduced here WITHOUT any LLM
 call from the captured raw planner claims.
 
 Diagnosed deterministic point of loss (now fixed)

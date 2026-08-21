@@ -286,12 +286,11 @@ def test_no_secret_looking_values_in_output() -> None:
 
 from pathlib import Path  # noqa: E402
 
-_ARTIFACT = (
-    Path(__file__).resolve().parents[2]
-    / "artifacts"
-    / "regressions"
-    / "derech-hashalom"
-    / "pre-tool-triage.json"
+_DERECH_HASHALOM_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "pre_tool_triage"
+    / "derech_hashalom_report.json"
 )
 
 
@@ -521,7 +520,7 @@ def test_focused_claims_are_a_subset_of_retained_claims() -> None:
 
 # 10. Saved real planner replay does not manufacture missing claims.
 def test_derech_hashalom_replay_does_not_manufacture_claims() -> None:
-    report = json.loads(_ARTIFACT.read_text(encoding="utf-8"))
+    report = json.loads(_DERECH_HASHALOM_FIXTURE.read_text(encoding="utf-8"))
     focused = script.build_focused_view(report)
 
     nearby = {c["text"]: c for c in focused["relevant_claims"] if c["type"] == "nearby"}
@@ -575,7 +574,7 @@ def test_focused_view_is_a_pure_projection() -> None:
 
 
 def test_from_report_renders_focused_view(capsys: pytest.CaptureFixture[str]) -> None:
-    assert script.main(["--from-report", str(_ARTIFACT)]) == 0
+    assert script.main(["--from-report", str(_DERECH_HASHALOM_FIXTURE)]) == 0
     out = capsys.readouterr().out
     assert "Pre-Tool Triage (focused)" in out
     assert "FINAL TOOL PLAN" in out

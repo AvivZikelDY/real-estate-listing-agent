@@ -4,8 +4,7 @@ DISTINCT same-category claim as if it duplicated the typed
 property/entity (e.g. an urban-renewal listing's CURRENT apartment vs. its
 CLAIMED FUTURE replacement apartment).
 
-Diagnosed while evaluating the "דרך השלום" real listing (see
-`artifacts/regressions/derech-hashalom/evaluation-summary.md`): the real
+Diagnosed while evaluating the "דרך השלום" real listing: the real
 LLMod planner produced two distinct, non-duplicate `"size_sqm"`-category
 claims - the future replacement apartment's own area, and its balcony
 area - neither of which duplicates the *current* apartment's structurally

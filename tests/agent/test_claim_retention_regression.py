@@ -1,7 +1,7 @@
 """Deterministic regression suite for the claim-retention fix.
 
-Captures the diagnosed Gonen 14 claim-loss failure
-(`artifacts/claim-loss-diagnosis/root-cause-report.md`) as a typed fixture
+Captures the diagnosed Gonen 14 claim-loss failure (a real LLMod planner
+response that lost claims past the retention cap) as a typed fixture
 BEFORE any production fix, proves it failed for the diagnosed reason, and
 then locks in the general fix (deterministic dedup -> prioritize -> cap in
 `plan_validator`) so it can never silently regress.
@@ -23,10 +23,8 @@ from src.listing_agent.agent.schemas import Claim, PropertyDetails, TriagePlan
 GONEN_ADDRESS = "גונן 14"
 
 # The exact 12 claims the real LLMod planner produced for the Gonen 14
-# listing, taken verbatim from
-# `artifacts/claim-loss-diagnosis/claims-before-limit.json` (one
-# authorized real LLM call; this fixture makes that captured failure
-# reproducible without ever calling the LLM again).
+# listing (captured from one authorized real LLM call; this fixture makes
+# that captured failure reproducible without ever calling the LLM again).
 GONEN_14_RAW_CLAIMS: list[Claim] = [
     Claim(id="c1", text="גונן 14", type="factual", category="address"),
     Claim(id="c2", text="נכס עם ממ״ד", type="factual", category="condition"),
