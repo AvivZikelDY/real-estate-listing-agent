@@ -21,13 +21,18 @@
       <button type="button" class="example-btn" data-example="rental">Rental listing</button>
     </section>
 
+    <section class="conversation-bar" aria-label="Conversation">
+      <span id="conversation-indicator" class="conversation-indicator"></span>
+      <button type="button" id="new-conversation-button">New conversation</button>
+    </section>
+
     <form id="triage-form">
       <label for="prompt">Listing details and question</label>
       <textarea
         id="prompt"
         name="prompt"
         rows="10"
-        placeholder="e.g. HaYarkon 120, Tel Aviv, 4 rooms, 90 sqm, asking 3,200,000 ILS. Is it suitable for a family with two kids?"
+        placeholder="e.g. HaYarkon 120, Tel Aviv, 4 rooms, 90 sqm, asking 3,200,000 ILS. Is it suitable for a family with two kids? Follow-up questions about the same listing (e.g. 'How far?') stay in the same conversation until you start a new one."
         dir="auto"
       ></textarea>
       <button type="submit" id="run-button">Run Agent</button>

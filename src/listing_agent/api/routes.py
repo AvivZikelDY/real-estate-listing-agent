@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from src.listing_agent.agent.conversation import InMemoryContextStore, get_context_store
 from src.listing_agent.agent.orchestrator import run_agent_pipeline
 from src.listing_agent.agent.plan_validator import PlanValidationError
 from src.listing_agent.agent.request_limits import RequestLimitError
@@ -149,6 +150,11 @@ def _get_settings_dependency() -> Settings:
     return get_settings()
 
 
+def _get_context_store_dependency() -> InMemoryContextStore:
+    """FastAPI dependency wrapping `get_context_store`, overridable in tests."""
+    return get_context_store()
+
+
 def _llm_steps(tracer: StepTracer) -> list[StepTrace]:
     """Only the LLM-module steps are surfaced in the public `/api/execute` response.
 
@@ -166,6 +172,7 @@ async def execute(
     tool_executor: ToolExecutor = Depends(_get_tool_executor_dependency),
     tracer: StepTracer = Depends(_get_step_tracer_dependency),
     settings: Settings = Depends(_get_settings_dependency),
+    context_store: InMemoryContextStore = Depends(_get_context_store_dependency),
 ) -> ExecuteResponse:
     """Run the full agent pipeline and return the required four-field response."""
     try:
@@ -176,8 +183,10 @@ async def execute(
                 tool_executor=tool_executor,
                 tracer=tracer,
                 settings=settings,
+                conversation_id=request.conversation_id,
+                context_store=context_store,
             ),
-            timeout=settings.request_deadline_seconds,
+            timeout=settings.llm_request_timeout_seconds,
         )
     except RequestLimitError as exc:
         return ExecuteResponse(
@@ -192,7 +201,7 @@ async def execute(
             status="error",
             error=(
                 f"Request exceeded the time limit of "
-                f"{settings.request_deadline_seconds:.0f} seconds."
+                f"{settings.llm_request_timeout_seconds:.0f} seconds."
             ),
             response=None,
             steps=_llm_steps(tracer),

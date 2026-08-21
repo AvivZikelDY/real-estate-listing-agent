@@ -59,15 +59,28 @@ that performs real work (LLM calls + tool calls).
 Request (conceptual):
 ```
 {
-  "listing": {
-    "address": string,
-    ... other listing facts (defined in Phase 1)
-  }
+  "prompt": string,                  // required, the user's free-text input
+  "conversation_id": string | null   // optional (Phase 2 - stateful follow-ups)
 }
 ```
 
+`conversation_id` is entirely optional and backward-compatible:
+- Absent (or blank/whitespace) → exact original stateless behavior: no
+  conversation lookup, no evidence reuse, nothing saved.
+- Present, unknown id → treated as a brand-new conversation (never an
+  error - no authentication, no ownership check).
+- Present, known id → a follow-up turn about the same listing: missing
+  listing facts are hydrated from the conversation's stored context, and
+  already-collected `geo_resolver`/`nearby_services`/`price_signal`
+  results are reused instead of re-executed when the exact same typed tool
+  input would be produced again. See
+  `docs/follow_up_context_plan.md` for the full design.
+- Two different `conversation_id` values never share any state.
+- Context is in-memory only, for the life of the current process - no
+  persistence across a restart, no TTL, no distributed store.
+
 Response — **must always** contain exactly these top-level fields, regardless
-of success or failure:
+of success or failure, whether or not `conversation_id` was supplied:
 ```
 {
   "status": "ok" | "error",
@@ -83,12 +96,13 @@ Rules:
 - `error` is `null` on success, and a human-readable message on failure.
 - `response` is `null` on failure.
 - `steps` reports only the **LLM-module** steps (`triage_planner`,
-  `report_writer`), in call order — never the intermediate `tool` or
-  `deterministic` steps. On a normal successful run this is always exactly
-  two entries: `triage_planner` then `report_writer`. `step_tracer` still
-  records every tool/deterministic step internally (for the Evidence
-  Bundle and future debugging), but `/api/execute` only ever surfaces the
-  LLM steps.
+  `report_writer`), in call order — never the intermediate `tool`,
+  `deterministic`, or `context_reuse` steps. On a normal successful run
+  this is always exactly two entries: `triage_planner` then
+  `report_writer`, regardless of whether `conversation_id` was supplied.
+  `step_tracer` still records every tool/deterministic/context-reuse step
+  internally (for the Evidence Bundle and future debugging), but
+  `/api/execute` only ever surfaces the LLM steps.
 
 ### `GET /`
 
@@ -102,13 +116,25 @@ logic beyond serving the file).
 ### `agent_orchestrator`
 
 Coordinates a single `/api/execute` run:
-1. Calls `triage_planner` (LLM) to get a plan.
-2. Passes the plan to `plan_validator`.
-3. Passes the validated plan to `evidence_collector`.
-4. Passes collected evidence to `evidence_bundle_builder`.
-5. Calls `report_writer` (LLM) with the evidence bundle.
-6. Uses `step_tracer` throughout to build the `steps` list.
-7. Assembles the final `{status, error, response, steps}` payload.
+1. (Optional, only when `conversation_id` was supplied) Loads any stored
+   `ConversationContext` and builds a compact follow-up context summary.
+2. Calls `triage_planner` (LLM) to get a plan, including the compact
+   follow-up context (if any) as an additional `follow_up_context` field
+   in its `user_payload` - never a new LLM call.
+3. (Optional) Hydrates the plan's missing `PropertyDetails` fields from
+   the stored context; detects a listing change.
+4. Passes the plan to `plan_validator`.
+5. Passes the validated plan to `evidence_collector` - or, when a
+   conversation context is active, to `agent.conversation`'s cache-aware
+   `collect_evidence_with_context`, which reuses already-cached tool
+   results and executes only the missing work through the same
+   `ToolExecutor` seam.
+6. Passes collected evidence to `evidence_bundle_builder`.
+7. Calls `report_writer` (LLM) with the evidence bundle.
+8. Uses `step_tracer` throughout to build the `steps` list (plus, when
+   stateful, one internal `context_reuse` deterministic step).
+9. (Optional) Saves the updated `ConversationContext` back to the store.
+10. Assembles the final `{status, error, response, steps}` payload.
 
 ### `plan_validator`
 
@@ -419,7 +445,7 @@ remove, or rename any top-level field of the public `/api/execute` response
 
 ### `agent.module_names`
 
-A single source of truth for the ten frozen module/tool names used
+A single source of truth for the frozen module/tool names used
 throughout the codebase (`StepTrace.step` values, `docs/contracts.md`,
 `scripts/generate_architecture_image.py`, `GET /api/agent_info` examples):
 
@@ -431,11 +457,13 @@ PLAN_VALIDATOR = "plan_validator"
 EVIDENCE_COLLECTOR = "evidence_collector"
 EVIDENCE_BUNDLE_BUILDER = "evidence_bundle_builder"
 STEP_TRACER = "step_tracer"
+CONTEXT_REUSE = "context_reuse"          # Phase 13 - internal only, never in
+                                          # the public /api/execute steps
 GEO_RESOLVER = "geo_resolver"
 NEARBY_SERVICES = "nearby_services"
 PRICE_SIGNAL = "price_signal"
 
-ALL_MODULE_NAMES: frozenset[str]  # all ten of the above
+ALL_MODULE_NAMES: frozenset[str]  # all eleven of the above
 ```
 
 Existing per-module `MODULE_NAME` constants (`llm/triage_planner/planner.py`,
@@ -493,7 +521,7 @@ of the pipeline.
 | `max_claims`                          | 8       | Evidence Bundle / `report_writer` payload size         |
 | `max_tool_calls`                      | 3       | Tool-execution cost/latency (already ≤3 whitelisted tools) |
 | `max_total_tool_execution_seconds`    | 20.0    | Cumulative tool latency across one request             |
-| `request_deadline_seconds`            | 45.0    | Overall `/api/execute` wall-clock time (well below the assignment's 300s ceiling; small enough to fail fast during development) |
+| `llm_request_timeout_seconds`         | 300.0   | Overall `/api/execute` wall-clock time; configurable via `LLM_REQUEST_TIMEOUT_SECONDS`, defaults to the assignment's own 300s "no more than 5 minutes to get an answer" ceiling |
 
 These are conservative *defaults* appropriate for a university project's
 real, mocked tool latencies - not tuned for a production SLA. They are
@@ -532,7 +560,7 @@ all overridable via environment variables/`Settings` without code changes.
   `limitations` entry - the whole request is never aborted, only the
   remaining not-yet-useful calls are skipped.
 - **Overall request deadline**: `POST /api/execute` wraps the entire
-  pipeline call in `asyncio.wait_for(..., timeout=settings.request_deadline_seconds)`.
+  pipeline call in `asyncio.wait_for(..., timeout=settings.llm_request_timeout_seconds)`.
   On timeout, it returns `{"status": "error", "error": "Request exceeded
   the time limit of Ns.", "response": null, "steps": [...]}` using
   whatever LLM steps had already completed - never an unhandled hang.

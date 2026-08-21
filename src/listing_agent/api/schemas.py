@@ -25,6 +25,12 @@ class ExecuteRequest(BaseModel):
     """Request body for `POST /api/execute`."""
 
     prompt: str = Field(min_length=1)
+    # Optional (Phase 2): enables stateful follow-up questions about the
+    # same listing within one conversation. Absent/null preserves the
+    # exact original stateless behavior - no context lookup, no reuse, no
+    # save. An unknown id is simply treated as a brand-new conversation
+    # (never an error - no authentication, no ownership).
+    conversation_id: str | None = Field(default=None, max_length=128)
 
     @field_validator("prompt")
     @classmethod
@@ -32,6 +38,16 @@ class ExecuteRequest(BaseModel):
         if not value.strip():
             raise ValueError("prompt must not be empty or blank")
         return value
+
+    @field_validator("conversation_id")
+    @classmethod
+    def conversation_id_blank_means_absent(cls, value: str | None) -> str | None:
+        """Normalize a blank/whitespace-only id to `None` - never treated
+        as a conversation literally named `""`."""
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 class ExecuteResponse(BaseModel):

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from src.listing_agent.agent.schemas import PropertyDetails, ToolCall, TriagePlan
 from src.listing_agent.agent.tool_executor import LocalToolExecutor
 from src.listing_agent.api import routes
-from src.listing_agent.config import Settings
+from src.listing_agent.config import Settings, get_settings
 from src.listing_agent.llm.client.fake import FakeLLMClient
 from src.listing_agent.llm.report_writer import ReportOutput
 from src.listing_agent.llm.report_writer.writer import MODULE_NAME as REPORT_WRITER_MODULE
@@ -233,7 +233,7 @@ class _SlowFakeLLMClient(FakeLLMClient):
 
 
 def test_execute_enforces_the_overall_request_deadline() -> None:
-    """Phase 17: a run that exceeds `request_deadline_seconds` returns a
+    """Phase 17: a run that exceeds `llm_request_timeout_seconds` returns a
     clear `status="error"`, never an unbounded hang or an opaque 500."""
     plan = _family_plan()
     slow_client = _SlowFakeLLMClient(delay_seconds=0.5)
@@ -245,7 +245,7 @@ def test_execute_enforces_the_overall_request_deadline() -> None:
         get_tool_registry(Settings(tools_mode="mock"))
     )
     app.dependency_overrides[routes._get_settings_dependency] = lambda: Settings(
-        request_deadline_seconds=0.05
+        llm_request_timeout_seconds=0.05
     )
 
     response = client.post("/api/execute", json={"prompt": "Is this good for a family?"})
@@ -255,6 +255,33 @@ def test_execute_enforces_the_overall_request_deadline() -> None:
     assert body["status"] == "error"
     assert "time limit" in body["error"]
     assert body["response"] is None
+
+
+def test_llm_request_timeout_seconds_is_configurable_via_env_var(
+    monkeypatch,
+) -> None:
+    """`LLM_REQUEST_TIMEOUT_SECONDS` must reach the actual deadline enforced
+    around the agent pipeline (not just be an unused `Settings` field)."""
+    monkeypatch.setenv("LLM_REQUEST_TIMEOUT_SECONDS", "0.05")
+    env_settings = get_settings()
+    assert env_settings.llm_request_timeout_seconds == 0.05
+
+    plan = _family_plan()
+    slow_client = _SlowFakeLLMClient(delay_seconds=0.5)
+    slow_client.set_response(TRIAGE_PLANNER_MODULE, plan)
+    slow_client.set_response(REPORT_WRITER_MODULE, ReportOutput(report="report"))
+
+    app.dependency_overrides[routes._get_llm_client_dependency] = lambda: slow_client
+    app.dependency_overrides[routes._get_tool_executor_dependency] = lambda: LocalToolExecutor(
+        get_tool_registry(Settings(tools_mode="mock"))
+    )
+    app.dependency_overrides[routes._get_settings_dependency] = lambda: env_settings
+
+    response = client.post("/api/execute", json={"prompt": "Is this good for a family?"})
+
+    body = response.json()
+    assert body["status"] == "error"
+    assert "time limit of 0 seconds" in body["error"]
 
 
 def test_execute_normal_path_is_well_within_the_default_deadline() -> None:
