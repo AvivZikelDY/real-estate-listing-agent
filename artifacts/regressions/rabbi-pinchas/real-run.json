@@ -1,0 +1,395 @@
+{
+  "title": "Pre-Tool Triage",
+  "property_facts": {
+    "listing_type": "purchase",
+    "raw_address": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו",
+    "asking_price": 3600000.0,
+    "rooms": 2.0,
+    "sqm": 58.0
+  },
+  "buyer_goal": "price_validation",
+  "retained_atomic_claims": [
+    {
+      "claim_id": "c6",
+      "text": "23 מ\"ר מרפסות",
+      "source": null,
+      "type": "factual",
+      "category": "size_sqm",
+      "canonical_category": "size_sqm",
+      "priority": 1,
+      "verification_decision": "LISTING_FACT"
+    },
+    {
+      "claim_id": "c1",
+      "text": "נכס עם ממ\"ד",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c3",
+      "text": "שוק הפשפשים",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c4",
+      "text": "העין העיתיקה",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c5",
+      "text": "כיכר השעון",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c12",
+      "text": "מעלית",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c13",
+      "text": "חניה פרטית",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c2",
+      "text": "בבניין שעבר שימור ותוספת",
+      "source": null,
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "claim-derived-price-comparison",
+      "text": "Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)",
+      "source": "derived",
+      "type": "factual",
+      "category": "price_comparison",
+      "canonical_category": "price_comparison",
+      "priority": 1,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    }
+  ],
+  "removed_claims": [
+    {
+      "claim_id": "c7",
+      "text": "דירה קסומה למכירה בצפון יפו",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c8",
+      "text": "מרפסות קסומה לחצר פנימית",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c9",
+      "text": "שקטה",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c10",
+      "text": "מוארת",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c11",
+      "text": "נעימה במיוחד",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c14",
+      "text": "מושלם למגורים מיוחדים בלב האזור המבוקש ביפו",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    }
+  ],
+  "tool_plan": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "supports_claim_ids": [
+        "c1",
+        "c3",
+        "c4",
+        "c5",
+        "c12",
+        "c13",
+        "claim-derived-price-comparison"
+      ],
+      "dependencies": [],
+      "planner_arguments": {
+        "address": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "price_signal",
+      "supports_claim_ids": [
+        "claim-derived-price-comparison"
+      ],
+      "dependencies": [
+        "tool-call-1"
+      ],
+      "planner_arguments": {
+        "asking_price": 3600000,
+        "sqm": 58
+      }
+    }
+  ],
+  "prepared_tool_inputs": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "resolved": true,
+      "value": {
+        "address": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו",
+        "city_hint": "תל אביב"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "price_signal",
+      "resolved": false,
+      "unresolved_dependency_reason": "geo_resolver did not produce a resolved address",
+      "value": {
+        "normalized_address": {
+          "from_call": "tool-call-1",
+          "field": "normalized_address"
+        },
+        "neighborhood": {
+          "from_call": "tool-call-1",
+          "field": "neighborhood"
+        },
+        "listing_type": "purchase",
+        "asking_price": 3600000.0,
+        "area_sqm": 58.0
+      }
+    }
+  ],
+  "verification_still_required": {
+    "LISTING_FACT": [
+      "23 מ\"ר מרפסות"
+    ],
+    "CHECKABLE_WITH_TOOL": [
+      "נכס עם ממ\"ד",
+      "שוק הפשפשים",
+      "העין העיתיקה",
+      "כיכר השעון",
+      "מעלית",
+      "חניה פרטית",
+      "Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)"
+    ],
+    "REQUIRES_SELLER_OR_DOCUMENT": [
+      "בבניין שעבר שימור ותוספת"
+    ],
+    "REQUIRES_CONTRACT_REVIEW": [],
+    "SUBJECTIVE": [],
+    "OUT_OF_SCOPE": [],
+    "MISSING_INFORMATION": [
+      "additional_claims_truncated",
+      "additional_claims_truncated_detail: produced=14 deduplicated=14 retained=8 removed=6 removed_categories=['uncategorized']"
+    ]
+  },
+  "missing_information": [
+    "additional_claims_truncated",
+    "additional_claims_truncated_detail: produced=14 deduplicated=14 retained=8 removed=6 removed_categories=['uncategorized']"
+  ],
+  "follow_up_topics": [
+    {
+      "claim_id": "c2",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: בבניין שעבר שימור ותוספת"
+    }
+  ],
+  "focused": {
+    "property_context": [
+      {
+        "field": "address",
+        "value": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו"
+      },
+      {
+        "field": "city/neighborhood",
+        "value": "תל אביב"
+      },
+      {
+        "field": "listing_type",
+        "value": "purchase"
+      },
+      {
+        "field": "asking_price",
+        "value": 3600000.0
+      },
+      {
+        "field": "sqm",
+        "value": 58.0
+      },
+      {
+        "field": "rooms",
+        "value": 2.0
+      }
+    ],
+    "relevant_claims": [
+      {
+        "text": "נכס עם ממ\"ד",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "שוק הפשפשים",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "העין העיתיקה",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "כיכר השעון",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "מעלית",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "חניה פרטית",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)",
+        "source": "derived",
+        "type": "price comparison",
+        "supported": true,
+        "reason": "comparative price claim - checkable with price_signal",
+        "planned_tool": "price_signal",
+        "supports_claim_ids": [
+          "claim-derived-price-comparison"
+        ]
+      }
+    ],
+    "price": {
+      "asking_price_found": true,
+      "comparative_listing_claim_found": false,
+      "comparative_buyer_question_found": true,
+      "price_signal": "NEEDED",
+      "price_signal_missing_inputs": []
+    },
+    "final_tool_plan": [
+      {
+        "tool_name": "geo_resolver",
+        "supports_claim_ids": [
+          "c1",
+          "c3",
+          "c4",
+          "c5",
+          "c12",
+          "c13",
+          "claim-derived-price-comparison"
+        ],
+        "depends_on": [],
+        "resolved": true,
+        "input": {
+          "address": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו",
+          "city_hint": "תל אביב"
+        }
+      },
+      {
+        "tool_name": "price_signal",
+        "supports_claim_ids": [
+          "claim-derived-price-comparison"
+        ],
+        "depends_on": [
+          "tool-call-1"
+        ],
+        "resolved": false,
+        "input": {
+          "normalized_address": {
+            "from_call": "tool-call-1",
+            "field": "normalized_address"
+          },
+          "neighborhood": {
+            "from_call": "tool-call-1",
+            "field": "neighborhood"
+          },
+          "listing_type": "purchase",
+          "asking_price": 3600000.0,
+          "area_sqm": 58.0
+        }
+      }
+    ],
+    "missing_information": [],
+    "other_listing_content_present": true
+  },
+  "diagnostics": {
+    "llm_mode": "real",
+    "planner_mode": "real",
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false,
+    "llm_calls": 1,
+    "planner_duration_ms": 65819.6,
+    "produced_claims": 14,
+    "produced_tool_calls": 2,
+    "validation_status": "accepted",
+    "retained_claims": 9,
+    "planned_tool_calls": 2
+  }
+}

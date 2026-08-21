@@ -462,8 +462,13 @@ SCENARIOS: dict[int, Scenario] = {
         question="מה דעתך על הדירה?",
         expected_goal="general_question",
         expected_categories=("rooms", "size_sqm", "price", "address", "nearby_amenities"),
-        expected_tools=("geo_resolver", "nearby_services", "price_signal"),
-        forbidden_tools=(),
+        # Phase 0 (price provenance guard): a plain "price" listing fact
+        # with no comparative-price claim/question is never enough to keep
+        # price_signal, even though the raw (simulated over-eager) planner
+        # output below still proposes it - plan_validator now deterministically
+        # drops it.
+        expected_tools=("geo_resolver", "nearby_services"),
+        forbidden_tools=("price_signal",),
         expected_answerability="verifiable",
         plan=TriagePlan(
             property_details=PropertyDetails(

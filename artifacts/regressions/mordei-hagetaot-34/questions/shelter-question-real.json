@@ -1,0 +1,328 @@
+{
+  "title": "Pre-Tool Triage",
+  "property_facts": {
+    "listing_type": "purchase",
+    "raw_address": "מורדי הגטאות 34",
+    "asking_price": 18000000.0,
+    "rooms": 2.0,
+    "sqm": 41.0
+  },
+  "buyer_goal": "nearby_services_check",
+  "buyer_question": "האם יש מקלט קרוב לדירה?",
+  "retained_atomic_claims": [
+    {
+      "claim_id": "c1",
+      "text": "מקלט במרחק 231 מ'",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 1,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c7",
+      "text": "הדירה נמצאת מרחק כמה דקות מהתחנה כ- דקות מהתחנה מהתחנה המרכזית של הקו הסגול בקרבת הקלה",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 1,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c2",
+      "text": "קומה 1/3",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c4",
+      "text": "הבניין נמצא בשלבים מתקדמים של פרויקט פינוי-בינוי",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c5",
+      "text": "בהובלת עזרה וביצרון.",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c3",
+      "text": "פוטנציאל השבחה יוצא דופן",
+      "source": null,
+      "type": "subjective",
+      "category": null,
+      "canonical_category": null,
+      "priority": 6,
+      "verification_decision": "SUBJECTIVE"
+    },
+    {
+      "claim_id": "c6",
+      "text": "יתרון תחבורתי משמעותי -",
+      "source": null,
+      "type": "subjective",
+      "category": null,
+      "canonical_category": null,
+      "priority": 6,
+      "verification_decision": "SUBJECTIVE"
+    },
+    {
+      "claim_id": "c8",
+      "text": "נס נדיר שמשלב איכויות חיים",
+      "source": null,
+      "type": "subjective",
+      "category": null,
+      "canonical_category": null,
+      "priority": 6,
+      "verification_decision": "SUBJECTIVE"
+    }
+  ],
+  "removed_claims": [
+    {
+      "claim_id": "c9",
+      "text": "מיקום מצוין",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c10",
+      "text": "ופוטנציאל השבחה גבוה",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    }
+  ],
+  "tool_plan": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "supports_claim_ids": [
+        "c1",
+        "c6",
+        "c7"
+      ],
+      "dependencies": [],
+      "planner_arguments": {
+        "address": "מורדי הגטאות 34"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "supports_claim_ids": [
+        "c1",
+        "c6",
+        "c7"
+      ],
+      "dependencies": [
+        "tool-call-1"
+      ],
+      "planner_arguments": {
+        "address": "מורדי הגטאות 34",
+        "services": [
+          "shelter",
+          "public_transport"
+        ]
+      }
+    }
+  ],
+  "prepared_tool_inputs": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "resolved": true,
+      "value": {
+        "address": "מורדי הגטאות 34",
+        "city_hint": null
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "resolved": false,
+      "unresolved_dependency_reason": "geo_resolver did not produce resolved coordinates",
+      "value": {
+        "lat": {
+          "from_call": "tool-call-1",
+          "field": "lat"
+        },
+        "lon": {
+          "from_call": "tool-call-1",
+          "field": "lon"
+        },
+        "categories": [
+          "public_transport"
+        ],
+        "radius_m": 500
+      }
+    }
+  ],
+  "verification_still_required": {
+    "LISTING_FACT": [],
+    "CHECKABLE_WITH_TOOL": [
+      "מקלט במרחק 231 מ'",
+      "הדירה נמצאת מרחק כמה דקות מהתחנה כ- דקות מהתחנה מהתחנה המרכזית של הקו הסגול בקרבת הקלה"
+    ],
+    "REQUIRES_SELLER_OR_DOCUMENT": [
+      "קומה 1/3",
+      "הבניין נמצא בשלבים מתקדמים של פרויקט פינוי-בינוי",
+      "בהובלת עזרה וביצרון."
+    ],
+    "REQUIRES_CONTRACT_REVIEW": [],
+    "SUBJECTIVE": [
+      "פוטנציאל השבחה יוצא דופן",
+      "יתרון תחבורתי משמעותי -",
+      "נס נדיר שמשלב איכויות חיים"
+    ],
+    "OUT_OF_SCOPE": [],
+    "MISSING_INFORMATION": [
+      "additional_claims_truncated",
+      "additional_claims_truncated_detail: produced=10 deduplicated=10 retained=8 removed=2 removed_categories=['uncategorized']"
+    ]
+  },
+  "missing_information": [
+    "additional_claims_truncated",
+    "additional_claims_truncated_detail: produced=10 deduplicated=10 retained=8 removed=2 removed_categories=['uncategorized']"
+  ],
+  "follow_up_topics": [
+    {
+      "claim_id": "c2",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: קומה 1/3"
+    },
+    {
+      "claim_id": "c4",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: הבניין נמצא בשלבים מתקדמים של פרויקט פינוי-בינוי"
+    },
+    {
+      "claim_id": "c5",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: בהובלת עזרה וביצרון."
+    }
+  ],
+  "focused": {
+    "property_context": [
+      {
+        "field": "address",
+        "value": "מורדי הגטאות 34"
+      },
+      {
+        "field": "listing_type",
+        "value": "purchase"
+      },
+      {
+        "field": "asking_price",
+        "value": 18000000.0
+      },
+      {
+        "field": "sqm",
+        "value": 41.0
+      },
+      {
+        "field": "rooms",
+        "value": 2.0
+      }
+    ],
+    "relevant_claims": [
+      {
+        "text": "מקלט במרחק 231 מ'",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      },
+      {
+        "text": "הדירה נמצאת מרחק כמה דקות מהתחנה כ- דקות מהתחנה מהתחנה המרכזית של הקו הסגול בקרבת הקלה",
+        "source": "listing",
+        "type": "nearby",
+        "supported": false,
+        "reason": "unsupported nearby category",
+        "planned_tool": null
+      }
+    ],
+    "price": {
+      "asking_price_found": true,
+      "comparative_listing_claim_found": false,
+      "comparative_buyer_question_found": false,
+      "price_signal": "NOT NEEDED",
+      "price_signal_missing_inputs": []
+    },
+    "final_tool_plan": [
+      {
+        "tool_name": "geo_resolver",
+        "supports_claim_ids": [
+          "c1",
+          "c6",
+          "c7"
+        ],
+        "depends_on": [],
+        "resolved": true,
+        "input": {
+          "address": "מורדי הגטאות 34",
+          "city_hint": null
+        }
+      },
+      {
+        "tool_name": "nearby_services",
+        "supports_claim_ids": [
+          "c1",
+          "c6",
+          "c7"
+        ],
+        "depends_on": [
+          "tool-call-1"
+        ],
+        "resolved": false,
+        "input": {
+          "lat": {
+            "from_call": "tool-call-1",
+            "field": "lat"
+          },
+          "lon": {
+            "from_call": "tool-call-1",
+            "field": "lon"
+          },
+          "categories": [
+            "public_transport"
+          ],
+          "radius_m": 500
+        },
+        "categories": [
+          "public_transport"
+        ]
+      }
+    ],
+    "missing_information": [],
+    "other_listing_content_present": true
+  },
+  "diagnostics": {
+    "llm_mode": "real",
+    "planner_mode": "real",
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false,
+    "llm_calls": 1,
+    "planner_duration_ms": 111185.83,
+    "produced_claims": 10,
+    "produced_tool_calls": 2,
+    "validation_status": "accepted",
+    "retained_claims": 8,
+    "planned_tool_calls": 2
+  }
+}

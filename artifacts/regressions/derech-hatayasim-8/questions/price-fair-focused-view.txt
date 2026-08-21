@@ -1,0 +1,130 @@
+Pre-Tool Triage (focused)
+=========================
+
+PROPERTY CONTEXT
+----------------
+- address: דרכ הטייסים 8
+- listing_type: purchase
+- asking_price: 4700000.0
+- sqm: 111.0
+- rooms: 4.5
+
+RELEVANT CLAIMS FOUND
+---------------------
+- מרפסת שמש בגדול 12 מטר עם נוף פתוח וירוק לפארק.
+  source: listing
+  type: nearby
+  supported by current tools: yes
+  reason: maps to a frozen nearby_services category
+  categories: ['park']
+  planned tool: nearby_services
+  supports_claim_ids: ['c2']
+
+- חדר כושר
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- מועדון דיירים
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- מול פארק אדית וולפסון
+  source: listing
+  type: nearby
+  supported by current tools: yes
+  reason: maps to a frozen nearby_services category
+  categories: ['park']
+  planned tool: nearby_services
+  supports_claim_ids: ['c16']
+
+- גיבור גבעתייים
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- נוף ירוק פתוח ונצחי
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)
+  source: derived
+  type: price comparison
+  supported by current tools: yes
+  reason: comparative price claim - checkable with price_signal
+  planned tool: price_signal
+  supports_claim_ids: ['claim-derived-price-comparison']
+
+PRICE
+-----
+- asking price found: yes
+- comparative listing claim found: no
+- comparative buyer question found: yes
+- price_signal: NEEDED
+
+FINAL TOOL PLAN
+---------------
+1. geo_resolver
+   supports: ['c2', 'c14', 'c15', 'c16', 'c17', 'c18']
+   input:
+   {
+     "address": "דרכ הטייסים 8",
+     "city_hint": null
+   }
+
+2. price_signal
+   supports: ['claim-derived-price-comparison']
+   depends_on: ['tool-call-1']
+   input (unresolved until dependency runs):
+   {
+     "normalized_address": {
+       "from_call": "tool-call-1",
+       "field": "normalized_address"
+     },
+     "neighborhood": {
+       "from_call": "tool-call-1",
+       "field": "neighborhood"
+     },
+     "listing_type": "purchase",
+     "asking_price": 4700000.0,
+     "area_sqm": 111.0
+   }
+
+3. nearby_services
+   supports: ['c2', 'c14', 'c15', 'c16', 'c17', 'c18']
+   categories: ['park']
+   depends_on: ['tool-call-1']
+   input (unresolved until dependency runs):
+   {
+     "lat": {
+       "from_call": "tool-call-1",
+       "field": "lat"
+     },
+     "lon": {
+       "from_call": "tool-call-1",
+       "field": "lon"
+     },
+     "categories": [
+       "park"
+     ],
+     "radius_m": 500
+   }
+
+MISSING INFORMATION
+-------------------
+(none affecting a relevant nearby/price check)
+
+OTHER LISTING CONTENT
+---------------------
+Additional seller claims were present but are outside the current evidence scope and were not analyzed for external verification.
+(re-run with --verbose to see the full claim-by-claim analysis)

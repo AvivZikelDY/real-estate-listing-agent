@@ -1,0 +1,30 @@
+[
+  {
+    "id": "c3",
+    "text": "דירה, תל חייים, תל אביב יפו",
+    "type": "factual",
+    "category": "address",
+    "reason": "deduplicated_or_lower_priority_than_cap_boundary"
+  },
+  {
+    "id": "c6",
+    "text": "123 מ״ר",
+    "type": "factual",
+    "category": "size_sqm",
+    "reason": "deduplicated_or_lower_priority_than_cap_boundary"
+  },
+  {
+    "id": "c8",
+    "text": "דירה משודרגת, מטבח מפנק של מטבחי אניס, ומקלחות משודרגות,",
+    "type": "subjective",
+    "category": "condition",
+    "reason": "deduplicated_or_lower_priority_than_cap_boundary"
+  },
+  {
+    "id": "c12",
+    "text": "4,350,000 ₪",
+    "type": "factual",
+    "category": "price",
+    "reason": "deduplicated_or_lower_priority_than_cap_boundary"
+  }
+]

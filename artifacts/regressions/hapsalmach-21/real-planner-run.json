@@ -1,0 +1,108 @@
+{
+  "title": "Real planner run (raw, pre-validation state) - hapsalmach-21",
+  "provenance": {
+    "note": "Reconstructed, without any additional LLM call, from the single authorized real LLMod planner call captured in pre-tool-triage.json for this listing. property_details and buyer_goal are untouched by validate_plan, so they are identical to the raw triage_planner output. raw_claims is the union of that file's retained_atomic_claims and removed_claims (8 + 2 = 10, matching diagnostics.produced_claims=10). The planner proposed 0 tool_calls (diagnostics.produced_tool_calls=0); the 2 validated tool_calls in pre-tool-triage.json (geo_resolver + nearby_services) were synthesized deterministically by plan_validator, not proposed by the LLM.",
+    "planner_mode": "real",
+    "llm_calls": 1,
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false
+  },
+  "property_details": {
+    "listing_type": "purchase",
+    "raw_address": "הפלמ\"ח 21",
+    "asking_price": 4290000.0,
+    "rooms": 4.0,
+    "sqm": 112.0
+  },
+  "buyer_goal": "fast_claim_triage",
+  "raw_claims_count": 10,
+  "raw_claims": [
+    {
+      "text": "חניה רובוטית וחניון משותף עם שער חשמלי",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "קרוב למרכז קהילתי בית ציון ומוסדות חינוך.",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "נכס עם ממד",
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "קומה 6/7",
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "כיווני אוויר צפון מערב",
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "מטבח משודרג",
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "מאסטר הורים עם חדר רחצה פרטי",
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "מערכת מיזוג משודרגת עם דמפרים נפדרים בחדרים",
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "דירת 4 חדרים מרווחת, מוארת ונעימה במיוחד!",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "מתאימה למשפחה אשר רוצ\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    }
+  ],
+  "diagnostics": {
+    "llm_mode": "real",
+    "planner_mode": "real",
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false,
+    "llm_calls": 1,
+    "planner_duration_ms": 108546.25,
+    "produced_claims": 10,
+    "produced_tool_calls": 0,
+    "validation_status": "accepted",
+    "retained_claims": 8,
+    "planned_tool_calls": 2
+  }
+}

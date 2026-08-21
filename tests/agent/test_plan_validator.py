@@ -287,11 +287,12 @@ def test_nearby_services_synthesis_ignores_subjective_claims() -> None:
 # --- Phase 19: deriving a price_comparison claim/linkage (Deviation 2) ------
 
 
-def test_price_comparison_claim_is_derived_when_missing() -> None:
-    """`buyer_goal == "price_validation"` with `price_signal` planned but no
-    real `price_comparison`-categorized claim must get a deterministic,
-    clearly-marked derived claim - and `price_signal` must link to it, not
-    the literal `"price"` listing fact."""
+def test_price_signal_dropped_without_comparative_provenance() -> None:
+    """Phase 0 - price provenance guard: `buyer_goal == "price_validation"`
+    with `price_signal` planned, no real `price_comparison`-categorized
+    claim, and no explicit comparative-price intent in the buyer's prompt
+    must NOT be enough to keep `price_signal` - and no derived claim may be
+    synthesized to self-justify it either."""
     plan = TriagePlan(
         property_details=PropertyDetails(
             listing_type="purchase",
@@ -309,6 +310,32 @@ def test_price_comparison_claim_is_derived_when_missing() -> None:
     )
 
     validated = validate_plan(plan)
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+    assert not any(claim.category == "price_comparison" for claim in validated.claims)
+
+
+def test_price_signal_kept_when_buyer_prompt_has_comparative_intent() -> None:
+    """Justification A: an explicit comparative-price question in the
+    current turn's raw buyer prompt keeps `price_signal` and still derives
+    a clearly-marked comparative claim to link it to."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=100,
+        ),
+        buyer_goal="price_validation",
+        claims=[Claim(text='מחיר 4,700,000 ש"ח', type="factual", category="price")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(plan, buyer_prompt="Is the asking price fair?")
 
     derived = next(
         (claim for claim in validated.claims if claim.category == "price_comparison"), None
@@ -392,7 +419,89 @@ def test_price_comparison_derivation_respects_explicit_supports_claim_ids() -> N
         ],
     )
 
-    validated = validate_plan(plan)
+    # Justified via Phase 0's buyer-prompt signal, so price_signal survives
+    # long enough for this explicit-linkage assertion to be meaningful.
+    validated = validate_plan(plan, buyer_prompt="Is this a fair price?")
 
     price_call = next(call for call in validated.tool_calls if call.tool == "price_signal")
     assert price_call.supports_claim_ids == ["claim-0"]
+
+
+# --- Deterministic regression: "Is the asking price reasonable compared
+# to the area?" must keep price_signal, even with no price_comparison
+# claim and an LLM-invented buyer_goal (invariant A/B/C from the bug
+# report) --------------------------------------------------------------
+
+
+def test_invariant_a_explicit_comparative_question_keeps_price_signal_without_claim() -> None:
+    """A: an explicit comparative-price buyer question + purchase + the
+    required price inputs (asking_price, sqm) must keep `price_signal`,
+    even when the planner emitted zero claims (no `price_comparison`
+    claim at all) - this is the exact real-LLM regression: "Is the asking
+    price reasonable compared to the area?" contains no literal fixed
+    marker phrase, but is unambiguously a comparative-price question."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=4_000_000,
+            sqm=80,
+        ),
+        buyer_goal="price_validation",
+        claims=[],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(
+        plan, buyer_prompt="Is the asking price reasonable compared to the area?"
+    )
+
+    assert "price_signal" in {call.tool for call in validated.tool_calls}
+
+
+def test_invariant_b_explicit_comparative_listing_claim_allows_price_signal() -> None:
+    """B: an explicit, non-derived comparative-price listing claim (no
+    matching buyer-prompt phrasing needed) is independently sufficient to
+    allow `price_signal`."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "price_validation",
+            "claims": [
+                Claim(text="מחיר מתחת למחיר השוק", type="factual", category="price_comparison"),
+            ],
+            "tool_calls": [
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert "price_signal" in {call.tool for call in validated.tool_calls}
+
+
+def test_invariant_c_invented_buyer_goal_alone_never_keeps_price_signal() -> None:
+    """C: a plain listing with no comparative buyer question and no
+    comparative listing claim must still reject `price_signal`, even when
+    the LLM merely invents `buyer_goal="price_validation"` -
+    `buyer_goal` alone is never trusted."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "price_validation",
+            "claims": [],
+            "tool_calls": [
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        }
+    )
+
+    validated = validate_plan(plan, buyer_prompt="Tell me about this listing.")
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}

@@ -150,7 +150,10 @@ async def test_narrow_question_excludes_price_signal() -> None:
 async def test_general_question_inspects_multiple_objective_claims() -> None:
     report = await _run(10, "planner")
     planned_tools = {entry["tool_name"] for entry in report["final_tool_plan"]}
-    assert planned_tools == {"geo_resolver", "nearby_services", "price_signal"}
+    # Phase 0: price_signal is never kept without comparative-price
+    # provenance, even for a "general question" scenario with a plain price
+    # listing fact.
+    assert planned_tools == {"geo_resolver", "nearby_services"}
 
 
 # --- 8: family suitability remains partially answerable ---

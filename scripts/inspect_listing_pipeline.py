@@ -409,7 +409,10 @@ async def build_pipeline_report(
 
     try:
         validated_plan = validate_plan(
-            raw_plan, max_tool_calls=settings.max_tool_calls, max_claims=settings.max_claims
+            raw_plan,
+            max_tool_calls=settings.max_tool_calls,
+            max_claims=settings.max_claims,
+            buyer_prompt=prompt,
         )
     except PlanValidationError as exc:
         diagnostics["validation_status"] = "rejected"

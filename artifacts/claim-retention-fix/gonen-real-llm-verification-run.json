@@ -1,0 +1,178 @@
+{
+  "extracted_listing_facts": {
+    "listing_type": "purchase",
+    "raw_address": "גונן 14",
+    "asking_price": 4350000.0,
+    "rooms": 5.0,
+    "sqm": 123.0
+  },
+  "identified_claims": [
+    {
+      "claim_id": "c10",
+      "text": "נוף ירוק ופתוח, מתחם גני ילדים מעובר לכביש והמון חנייה ברחוב.",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "verifiability": "verifiable",
+      "proposed_tools": [
+        "geo_resolver",
+        "nearby_services"
+      ]
+    },
+    {
+      "claim_id": "c2",
+      "text": "נכס עם ממ״ד",
+      "type": "factual",
+      "category": "condition",
+      "verifiability": "unsupported_claim_type",
+      "proposed_tools": []
+    },
+    {
+      "claim_id": "c5",
+      "text": "קומה 5/6",
+      "type": "factual",
+      "category": null,
+      "verifiability": "unsupported_claim_type",
+      "proposed_tools": []
+    },
+    {
+      "claim_id": "c7",
+      "text": "דירה חדשה למסירה ברחוב גונן הירוק והמתחדש.",
+      "type": "factual",
+      "category": "condition",
+      "verifiability": "unsupported_claim_type",
+      "proposed_tools": []
+    },
+    {
+      "claim_id": "c9",
+      "text": "פרקט בחדרים שיורכב לאחר המסירה.",
+      "type": "factual",
+      "category": "condition",
+      "verifiability": "unsupported_claim_type",
+      "proposed_tools": []
+    },
+    {
+      "claim_id": "c11",
+      "text": "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר.",
+      "type": "factual",
+      "category": null,
+      "verifiability": "unsupported_claim_type",
+      "proposed_tools": []
+    },
+    {
+      "claim_id": "c1",
+      "text": "גונן 14",
+      "type": "factual",
+      "category": "address",
+      "verifiability": "listing_fact",
+      "proposed_tools": [
+        "geo_resolver"
+      ]
+    },
+    {
+      "claim_id": "c4",
+      "text": "5 חדרים",
+      "type": "factual",
+      "category": "rooms",
+      "verifiability": "listing_fact",
+      "proposed_tools": []
+    }
+  ],
+  "claims_not_sent_to_tools": [
+    {
+      "claim_id": "c2",
+      "text": "נכס עם ממ״ד",
+      "reason": "unsupported_claim_type"
+    },
+    {
+      "claim_id": "c5",
+      "text": "קומה 5/6",
+      "reason": "unsupported_claim_type"
+    },
+    {
+      "claim_id": "c7",
+      "text": "דירה חדשה למסירה ברחוב גונן הירוק והמתחדש.",
+      "reason": "unsupported_claim_type"
+    },
+    {
+      "claim_id": "c9",
+      "text": "פרקט בחדרים שיורכב לאחר המסירה.",
+      "reason": "unsupported_claim_type"
+    },
+    {
+      "claim_id": "c11",
+      "text": "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר.",
+      "reason": "unsupported_claim_type"
+    }
+  ],
+  "final_tool_plan": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "supports_claim_ids": [
+        "c10"
+      ],
+      "depends_on": [],
+      "execution_stage": 1,
+      "merged_from_duplicates": false,
+      "planner_arguments": {
+        "address": "גונן 14"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "supports_claim_ids": [
+        "c10"
+      ],
+      "depends_on": [
+        "tool-call-1"
+      ],
+      "execution_stage": 2,
+      "merged_from_duplicates": false,
+      "planner_arguments": {
+        "categories": [
+          "daycare"
+        ]
+      }
+    }
+  ],
+  "prepared_tool_inputs": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "resolved": true,
+      "value": {
+        "address": "גונן 14",
+        "city_hint": null
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "resolved": false,
+      "unresolved_dependency_reason": "geo_resolver did not produce resolved coordinates",
+      "value": {
+        "lat": {
+          "from_call": "tool-call-1",
+          "field": "lat"
+        },
+        "lon": {
+          "from_call": "tool-call-1",
+          "field": "lon"
+        },
+        "categories": [
+          "daycare"
+        ],
+        "radius_m": 500
+      }
+    }
+  ],
+  "diagnostics": {
+    "llm_mode": "fake",
+    "llm_calls": 1,
+    "planner_duration_ms": 0.06,
+    "planned_tool_calls_before_deduplication": 0,
+    "validation_status": "accepted",
+    "planned_tool_calls_after_deduplication": 2
+  }
+}

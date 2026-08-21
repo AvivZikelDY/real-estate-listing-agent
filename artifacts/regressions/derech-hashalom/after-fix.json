@@ -1,0 +1,263 @@
+{
+  "title": "Pre-Tool Triage",
+  "property_facts": {
+    "listing_type": "purchase",
+    "raw_address": "דרך השלום\nמקלט במרחק 183 מ׳\nדירה, תל חייים, תל אביב יפו",
+    "asking_price": 2890000.0,
+    "rooms": 2.5,
+    "sqm": 60.0
+  },
+  "buyer_goal": "fast_claim_triage",
+  "retained_atomic_claims": [
+    {
+      "claim_id": "claim-0",
+      "text": "מיקומים נהדר גובל בגבעותיים,",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "claim-1",
+      "text": "פארק וולפסון,",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "claim-2",
+      "text": "רכבת קלה,",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "claim-3",
+      "text": "ביצרון,",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "claim-4",
+      "text": "יצחק שדה ועוד.",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "claim-5",
+      "text": "התוכנית הופקדה!",
+      "source": null,
+      "type": "factual",
+      "category": "transaction_structure",
+      "canonical_category": "transaction_structure",
+      "priority": 3,
+      "verification_decision": "REQUIRES_CONTRACT_REVIEW"
+    },
+    {
+      "claim_id": "claim-6",
+      "text": "היזם \"אורון נדל\"ן\" - הסכם חתום.",
+      "source": null,
+      "type": "factual",
+      "category": "transaction_structure",
+      "canonical_category": "transaction_structure",
+      "priority": 3,
+      "verification_decision": "REQUIRES_CONTRACT_REVIEW"
+    },
+    {
+      "claim_id": "claim-7",
+      "text": "דירת תמורה:",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    }
+  ],
+  "removed_claims": [
+    {
+      "claim_id": null,
+      "text": "הזדמנויות יוצרות עם החלל לעסקת השבחה והתחדרשות עירונית בתל אביב.",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "82 מ\"ר",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "פלוס 12 מ\"ר מרפסת",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "חניה",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "מחסן",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "תפנה לרחוב עמישב",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": null,
+      "text": "קומה 5",
+      "canonical_category": null,
+      "reason": "capped_max_claims"
+    }
+  ],
+  "tool_plan": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "supports_claim_ids": [
+        "claim-0",
+        "claim-1",
+        "claim-2",
+        "claim-3",
+        "claim-4"
+      ],
+      "dependencies": [],
+      "planner_arguments": {
+        "address": "דרך השלום\nמקלט במרחק 183 מ׳\nדירה, תל חייים, תל אביב יפו"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "supports_claim_ids": [
+        "claim-0",
+        "claim-1",
+        "claim-2",
+        "claim-3",
+        "claim-4"
+      ],
+      "dependencies": [
+        "tool-call-1"
+      ],
+      "planner_arguments": {
+        "categories": [
+          "park"
+        ]
+      }
+    }
+  ],
+  "prepared_tool_inputs": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "resolved": true,
+      "value": {
+        "address": "דרך השלום\nמקלט במרחק 183 מ׳\nדירה, תל חייים, תל אביב יפו",
+        "city_hint": "תל אביב"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "resolved": false,
+      "unresolved_dependency_reason": "geo_resolver did not produce resolved coordinates",
+      "value": {
+        "lat": {
+          "from_call": "tool-call-1",
+          "field": "lat"
+        },
+        "lon": {
+          "from_call": "tool-call-1",
+          "field": "lon"
+        },
+        "categories": [
+          "park"
+        ],
+        "radius_m": 500
+      }
+    }
+  ],
+  "verification_still_required": {
+    "LISTING_FACT": [],
+    "CHECKABLE_WITH_TOOL": [
+      "מיקומים נהדר גובל בגבעותיים,",
+      "פארק וולפסון,",
+      "רכבת קלה,",
+      "ביצרון,",
+      "יצחק שדה ועוד."
+    ],
+    "REQUIRES_SELLER_OR_DOCUMENT": [
+      "דירת תמורה:"
+    ],
+    "REQUIRES_CONTRACT_REVIEW": [
+      "התוכנית הופקדה!",
+      "היזם \"אורון נדל\"ן\" - הסכם חתום."
+    ],
+    "SUBJECTIVE": [],
+    "OUT_OF_SCOPE": [],
+    "MISSING_INFORMATION": [
+      "additional_claims_truncated",
+      "additional_claims_truncated_detail: produced=15 deduplicated=15 retained=8 removed=7 removed_categories=['uncategorized']"
+    ]
+  },
+  "missing_information": [
+    "additional_claims_truncated",
+    "additional_claims_truncated_detail: produced=15 deduplicated=15 retained=8 removed=7 removed_categories=['uncategorized']"
+  ],
+  "follow_up_topics": [
+    {
+      "claim_id": "claim-5",
+      "verification_decision": "REQUIRES_CONTRACT_REVIEW",
+      "topic": "clarify in contract review: התוכנית הופקדה!"
+    },
+    {
+      "claim_id": "claim-6",
+      "verification_decision": "REQUIRES_CONTRACT_REVIEW",
+      "topic": "clarify in contract review: היזם \"אורון נדל\"ן\" - הסכם חתום."
+    },
+    {
+      "claim_id": "claim-7",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: דירת תמורה:"
+    }
+  ],
+  "diagnostics": {
+    "llm_mode": "fake",
+    "planner_mode": "fake",
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false,
+    "llm_calls": 1,
+    "planner_duration_ms": 0.09,
+    "produced_claims": 15,
+    "produced_tool_calls": 0,
+    "validation_status": "accepted",
+    "retained_claims": 8,
+    "planned_tool_calls": 2
+  }
+}
