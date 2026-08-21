@@ -57,8 +57,21 @@ def _canonical_json(data: dict[str, Any]) -> str:
 
 def geo_cache_key(input_model: GeoResolverInput) -> str:
     """Canonical key for a `geo_resolver` call: every semantic field of
-    `GeoResolverInput` (`address`, `city_hint`) - nothing else."""
-    return f"geo_resolver:{_canonical_json(input_model.model_dump(mode='json'))}"
+    `GeoResolverInput` (`address`, `city_hint`) - nothing else.
+
+    `address` is case/whitespace-normalized the same way
+    `listing_fingerprint` normalizes it (Phase 4): `city_hint` alone was
+    already canonicalized by `tool_input_builder.extract_city_hint`
+    ("TEL AVIV" and "Tel Aviv" both yield the city list's own "Tel Aviv"
+    spelling), but the raw `address` string it is paired with is not - two
+    turns whose planner-extracted `raw_address` differs only by the city's
+    casing would otherwise miss each other's cache entry despite being the
+    same effective geocoding request. Never changes what is actually sent
+    to `geo_resolver` - only this cache key's own computation.
+    """
+    payload = input_model.model_dump(mode="json")
+    payload["address"] = normalize_text(payload.get("address"))
+    return f"geo_resolver:{_canonical_json(payload)}"
 
 
 def nearby_cache_key(lat: float, lon: float, radius_m: int, category: str) -> str:

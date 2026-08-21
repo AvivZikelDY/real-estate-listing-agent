@@ -46,6 +46,18 @@ def test_geo_cache_key_differs_for_a_different_address() -> None:
     assert geo_cache_key(input_a) != geo_cache_key(input_b)
 
 
+def test_geo_cache_key_is_stable_across_city_hint_casing() -> None:
+    """Phase 4: `extract_city_hint` already canonicalizes case ("TEL AVIV"
+    and "Tel Aviv" both resolve to the city list's own "Tel Aviv"
+    spelling), but the raw `address` string is not itself canonicalized by
+    `tool_input_builder` - two turns whose planner-extracted `raw_address`
+    differs only by the city's casing must still hit the same geo cache
+    entry."""
+    input_a = GeoResolverInput(address="HaYarkon 120, TEL AVIV", city_hint="Tel Aviv")
+    input_b = GeoResolverInput(address="HaYarkon 120, Tel Aviv", city_hint="Tel Aviv")
+    assert geo_cache_key(input_a) == geo_cache_key(input_b)
+
+
 def test_nearby_cache_key_is_per_category() -> None:
     park_key = nearby_cache_key(32.08, 34.77, 500, "park")
     school_key = nearby_cache_key(32.08, 34.77, 500, "school")

@@ -604,3 +604,150 @@ async def test_scenario_9_valid_address_turn_after_a_no_city_turn_still_caches_n
     assert stored is not None
     assert stored.resolved_geo is not None
     assert any(key.startswith("nearby_services:park:") for key in stored.cached_nearby)
+
+
+async def test_scenario_10_geo_cache_key_stable_across_city_hint_casing() -> None:
+    """Phase 4: a listing restated with different city casing in the same
+    conversation ("TEL AVIV" vs "Tel Aviv") must still hit the same geo
+    cache entry - `extract_city_hint` already canonicalizes the `city_hint`
+    field, and the cache key itself normalizes the paired `address` string
+    the same way `listing_fingerprint` does."""
+    store = InMemoryContextStore()
+
+    first_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, TEL AVIV",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=90,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    first = await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(first_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-casing",
+        context_store=store,
+    )
+    assert set(first.bundle.executed_tools) == {"geo_resolver", "nearby_services"}
+
+    second_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=90,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    tracer2 = StepTracer()
+    second = await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(second_plan),
+        tool_executor=_executor(),
+        tracer=tracer2,
+        conversation_id="conv-casing",
+        context_store=store,
+    )
+
+    # geo_resolver is reused from cache despite the differently-cased
+    # address; only nearby_services runs again (a distinct listing
+    # re-statement, not treated as a listing change since the fingerprint's
+    # own normalize_text already folds case too).
+    assert set(second.bundle.executed_tools) <= {"nearby_services"}
+    detail = _context_reuse_detail(tracer2)
+    assert "geo_resolver" in detail["reused"]
+
+
+async def test_scenario_11_follow_up_context_stays_compact_across_many_turns() -> None:
+    """Phase 4: `build_compact_follow_up_context` must never grow with the
+    number of turns - it is always just the current known property facts,
+    the single previous buyer question, and the previous turn's focus
+    labels, never the accumulated transcript. Runs 8 turns (alternating
+    two distinct follow-up questions/categories) in the same conversation
+    and proves the compact text's length stays flat, `last_question` is
+    always exactly this turn's own question (never a growing history),
+    and `turn_count` is the only thing that keeps advancing."""
+    from src.listing_agent.agent.conversation.context import build_compact_follow_up_context
+
+    store = InMemoryContextStore()
+
+    turn1_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address=KNOWN_ADDRESS,
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=90,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(turn1_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-long",
+        context_store=store,
+    )
+
+    follow_up_questions = ["כמה רחוק?", "מה עם בתי ספר?"]
+    follow_up_categories = [["park"], ["school"]]
+    context_lengths: list[int] = []
+
+    for turn_index in range(8):
+        question = follow_up_questions[turn_index % 2]
+        categories = follow_up_categories[turn_index % 2]
+        plan = TriagePlan(
+            property_details=PropertyDetails(),
+            buyer_goal="nearby_services_check",
+            claims=[Claim(text=question, type="factual", category="nearby_amenities")],
+            tool_calls=[
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="nearby_services", arguments={"categories": categories}),
+            ],
+        )
+        await run_agent_pipeline(
+            question,
+            llm_client=_client(plan),
+            tool_executor=_executor(),
+            tracer=StepTracer(),
+            conversation_id="conv-long",
+            context_store=store,
+        )
+
+        stored = store.get("conv-long")
+        assert stored is not None
+        assert stored.last_question == question
+        text = build_compact_follow_up_context(stored)
+        assert text is not None
+        context_lengths.append(len(text))
+
+    # Flat, not linear-in-turn-count: every later turn's compact context is
+    # the same small size as the first (same property facts template, one
+    # question line, one focus line) - never accumulating.
+    assert len(set(context_lengths)) <= 2
+    assert max(context_lengths) < 400
+
+    stored = store.get("conv-long")
+    assert stored is not None
+    assert stored.turn_count == 9
