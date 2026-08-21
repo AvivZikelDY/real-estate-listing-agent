@@ -20,6 +20,7 @@ PLAN_VALIDATOR: Final = "plan_validator"
 EVIDENCE_COLLECTOR: Final = "evidence_collector"
 EVIDENCE_BUNDLE_BUILDER: Final = "evidence_bundle_builder"
 STEP_TRACER: Final = "step_tracer"
+CONTEXT_REUSE: Final = "context_reuse"
 
 # --- tools --------------------------------------------------------------------
 GEO_RESOLVER: Final = "geo_resolver"
@@ -36,6 +37,7 @@ ALL_MODULE_NAMES: Final = frozenset(
         EVIDENCE_COLLECTOR,
         EVIDENCE_BUNDLE_BUILDER,
         STEP_TRACER,
+        CONTEXT_REUSE,
         GEO_RESOLVER,
         NEARBY_SERVICES,
         PRICE_SIGNAL,

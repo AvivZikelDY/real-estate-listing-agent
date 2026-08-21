@@ -21,6 +21,43 @@ const resultSection = document.getElementById("result");
 const responseText = document.getElementById("response-text");
 const stepsList = document.getElementById("steps-list");
 const stepsDetails = document.getElementById("steps-details");
+const conversationIndicator = document.getElementById("conversation-indicator");
+const newConversationButton = document.getElementById("new-conversation-button");
+
+// One conversation_id per active browser tab/conversation (Phase 17):
+// enables stateful follow-up questions about the same listing without any
+// login/session infrastructure. Cleared by "New conversation" or when the
+// tab closes (sessionStorage) - never sent at all until the buyer has
+// actually run at least one turn.
+const CONVERSATION_STORAGE_KEY = "listingAgentConversationId";
+
+function getConversationId() {
+  return sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
+}
+
+function ensureConversationId() {
+  let id = getConversationId();
+  if (!id) {
+    id = (crypto.randomUUID && crypto.randomUUID()) || `conv-${Date.now()}-${Math.random()}`;
+    sessionStorage.setItem(CONVERSATION_STORAGE_KEY, id);
+  }
+  return id;
+}
+
+function renderConversationIndicator() {
+  const id = getConversationId();
+  conversationIndicator.textContent = id
+    ? `Conversation: ${id.slice(0, 8)}\u2026`
+    : "New conversation (not started yet)";
+}
+
+newConversationButton.addEventListener("click", () => {
+  sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
+  renderConversationIndicator();
+  resetOutput();
+});
+
+renderConversationIndicator();
 
 document.querySelectorAll(".example-btn").forEach((button) => {
   button.addEventListener("click", () => {
@@ -84,10 +121,11 @@ function renderSteps(steps) {
 }
 
 async function runAgent(prompt) {
+  const conversationId = ensureConversationId();
   const response = await fetch("/api/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, conversation_id: conversationId }),
   });
 
   let body;
@@ -122,6 +160,7 @@ form.addEventListener("submit", async (event) => {
     responseText.textContent = body.response;
     renderSteps(body.steps);
     resultSection.hidden = false;
+    renderConversationIndicator();
   } catch (err) {
     showError(err.message || "Something went wrong. Please try again.");
   } finally {

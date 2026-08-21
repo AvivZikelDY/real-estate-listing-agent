@@ -310,6 +310,161 @@ def _drop_forbidden_price_signal(
     return kept
 
 
+# Deterministic, fixed vocabulary (Hebrew + English) of explicit
+# comparative-price phrasing (Phase 0 - price provenance guard). Checked as
+# a case-insensitive substring of the current turn's raw buyer prompt -
+# never a heuristic guess beyond these literal markers, and never an LLM
+# judgment. Mirrors the style of `tool_input_builder`'s alias tables.
+_COMPARATIVE_PRICE_MARKERS: tuple[str, ...] = (
+    "fair price",
+    "fair value",
+    "is the price fair",
+    "is it fair",
+    "market price",
+    "market value",
+    "below market",
+    "above market",
+    "overpriced",
+    "under priced",
+    "underpriced",
+    "over priced",
+    "good price",
+    "good deal",
+    "bargain",
+    "worth the price",
+    "worth it",
+    "is it worth",
+    "fair",
+    "מחיר הוגן",
+    "מחיר השוק",
+    "מתחת למחיר",
+    "מעל למחיר",
+    "מעל מחיר",
+    "מתחת מחיר",
+    "הוגן",
+    "מציאה",
+    "יקר מדי",
+    "זול מדי",
+    "כדאי",
+    "שווה את המחיר",
+    "שווה את הכסף",
+)
+
+# General rule (not a fixed phrase list): an explicit reference to the
+# price/cost, combined *anywhere in the same prompt* with an explicit
+# comparative/evaluative judgment word, also counts as comparative-price
+# intent - this generalizes beyond `_COMPARATIVE_PRICE_MARKERS`'s literal
+# phrases to catch real rephrasings such as "Is the asking price reasonable
+# compared to the area?" (no single fixed marker above matches that
+# sentence, but it unambiguously asks for a price-vs-market comparison).
+_PRICE_REFERENCE_MARKERS: tuple[str, ...] = (
+    "price",
+    "asking price",
+    "cost",
+    "מחיר",
+)
+_COMPARATIVE_JUDGMENT_MARKERS: tuple[str, ...] = (
+    "reasonable",
+    "fair",
+    "worth",
+    "bargain",
+    "overpriced",
+    "underpriced",
+    "under priced",
+    "over priced",
+    "good deal",
+    "good price",
+    "market",
+    "compare",
+    "compared",
+    "comparison",
+    "cheap",
+    "expensive",
+    "too high",
+    "too low",
+    "versus",
+    "הוגן",
+    "השוואה",
+    "משתלם",
+    "כדאי",
+    "יקר",
+    "זול",
+    "לעומת",
+    "ביחס",
+    "מציאה",
+)
+
+
+def prompt_has_comparative_price_intent(buyer_prompt: str) -> bool:
+    """Deterministically detect explicit comparative-price intent in the
+    current turn's raw buyer prompt (Phase 0).
+
+    Two independent, purely deterministic checks - never an LLM judgment,
+    never trusting `buyer_goal` alone:
+    1. A literal fixed phrase from `_COMPARATIVE_PRICE_MARKERS`, or
+    2. The general rule: an explicit price/cost reference
+       (`_PRICE_REFERENCE_MARKERS`) *and* an explicit comparative/evaluative
+       judgment word (`_COMPARATIVE_JUDGMENT_MARKERS`) both present
+       somewhere in the prompt, in any order/phrasing.
+
+    Used only as one of two ways to *justify* a `price_signal` call - the
+    other being an explicit, non-derived `price_comparison` claim already
+    present in the plan (see `_drop_unjustified_price_signal`). Never a
+    substitute for the LLM's own `buyer_goal` classification, which is not
+    itself sufficient justification.
+    """
+    if not buyer_prompt:
+        return False
+    lowered = buyer_prompt.strip().lower()
+    if not lowered:
+        return False
+    if any(marker in lowered for marker in _COMPARATIVE_PRICE_MARKERS):
+        return True
+    has_price_reference = any(marker in lowered for marker in _PRICE_REFERENCE_MARKERS)
+    has_comparative_judgment = any(
+        marker in lowered for marker in _COMPARATIVE_JUDGMENT_MARKERS
+    )
+    return has_price_reference and has_comparative_judgment
+
+
+def _has_comparative_price_provenance(claims: list[Claim]) -> bool:
+    """Whether the plan already carries a *real* (non-derived) comparative
+    price claim - i.e. an actual explicit comparative-price assertion the
+    listing itself made, not a claim the system synthesized to justify
+    itself (Phase 0: "A DERIVED price-comparison claim may be created for
+    linkage only AFTER real comparative provenance exists. It must never
+    justify itself.")."""
+    return any(
+        normalize_category(claim.category) == "price_comparison"
+        and claim.source != ClaimSource.DERIVED
+        for claim in claims
+    )
+
+
+def _drop_unjustified_price_signal(
+    tool_calls: list[ToolCall], claims: list[Claim], buyer_prompt: str
+) -> list[ToolCall]:
+    """Phase 0 price-provenance guard.
+
+    `price_signal` is allowed only when:
+    A. the current turn's raw buyer prompt contains explicit
+       comparative-price intent (`prompt_has_comparative_price_intent`), or
+    B. the listing/plan already contains an explicit, non-derived
+       comparative-price claim (`_has_comparative_price_provenance`).
+
+    `buyer_goal == "price_validation"` alone (an LLM classification with no
+    corroborating evidence) is never sufficient - this is the deterministic
+    fix for the known bug where a plain listing with just an asking price
+    and size could otherwise trigger `price_signal` merely because the
+    planner invented that goal.
+    """
+    if _has_comparative_price_provenance(claims) or prompt_has_comparative_price_intent(
+        buyer_prompt
+    ):
+        return tool_calls
+    return [call for call in tool_calls if call.tool != "price_signal"]
+
+
 def _ensure_geo_resolver_dependency(
     tool_calls: list[ToolCall],
     property_details: PropertyDetails,
@@ -573,6 +728,7 @@ def validate_plan(
     *,
     max_tool_calls: int = MAX_TOOL_CALLS,
     max_claims: int = MAX_CLAIMS,
+    buyer_prompt: str = "",
 ) -> TriagePlan:
     """Validate and normalize `plan`, returning a cleaned-up `TriagePlan`.
 
@@ -598,19 +754,28 @@ def validate_plan(
        (Phase 19).
     9. Ensure `geo_resolver` runs first whenever a location-dependent tool
        is selected (dropping those tools if no address is available).
-    10. Ensure a `price_signal` call is linked to a genuine comparative
+    10. Drop `price_signal` unless justified by an explicit comparative-price
+        claim or explicit comparative-price intent in `buyer_prompt` (Phase
+        0 - price provenance guard); `buyer_goal` alone is never enough.
+    11. Ensure a `price_signal` call is linked to a genuine comparative
         claim rather than the literal `"price"` listing fact, synthesizing
         one deterministic, explicitly-marked derived claim when the buyer's
         goal is `"price_validation"` and no such claim already exists
-        (Phase 19).
-    11. Order `geo_resolver` first (dependency order).
-    12. Cap the plan at `max_tool_calls` tool calls (default 3).
+        (Phase 19). Only ever fires once step 10 has already justified
+        keeping `price_signal`.
+    12. Order `geo_resolver` first (dependency order).
+    13. Cap the plan at `max_tool_calls` tool calls (default 3).
 
     Args:
         max_tool_calls: Configurable cap (Phase 17), normally sourced from
             `Settings.max_tool_calls`.
         max_claims: Configurable cap (Phase 17), normally sourced from
             `Settings.max_claims`.
+        buyer_prompt: The current turn's raw buyer prompt (Phase 0), used
+            only to deterministically detect explicit comparative-price
+            intent (see `prompt_has_comparative_price_intent`). Defaults to
+            `""` (no signal) for backward compatibility with existing
+            direct callers/tests.
     """
     unknown_tool_errors = [
         f"Unknown tool '{call.tool}' is not in the allowed tool whitelist "
@@ -643,6 +808,7 @@ def validate_plan(
     tool_calls = _ensure_geo_resolver_dependency(
         tool_calls, plan.property_details, missing_information
     )
+    tool_calls = _drop_unjustified_price_signal(tool_calls, claims, buyer_prompt)
     tool_calls, claims = _ensure_price_comparison_claim_linkage(
         tool_calls, claims, plan.buyer_goal
     )

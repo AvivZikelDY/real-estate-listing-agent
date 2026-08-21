@@ -64,12 +64,18 @@ class Settings(BaseSettings):
     max_total_tool_execution_seconds: float = 240.0
 
     # Overall deadline (seconds) for one `POST /api/execute` request,
-    # end-to-end (both LLM calls plus all tool execution). This is a hard
-    # `asyncio.wait_for` in `api/routes.py`, so it must stay ABOVE
-    # `max_total_tool_execution_seconds` or it would cut requests short
-    # before the tool budget could ever apply. Kept under the assignment's
-    # 300-second ceiling.
-    request_deadline_seconds: float = 290.0
+    # end-to-end (both LLM calls plus all tool execution). Configurable via
+    # `LLM_REQUEST_TIMEOUT_SECONDS`. This is a hard `asyncio.wait_for` in
+    # `api/routes.py`, so it must stay ABOVE `max_total_tool_execution_seconds`
+    # or it would cut requests short before the tool budget could ever apply.
+    # Defaults to just under the assignment's own 300-second "no more than 5
+    # minutes to get an answer" ceiling (see `llm/client/llmod.py`'s
+    # `READ_TIMEOUT_SECONDS`, the per-HTTP-call LLM client timeout this
+    # deadline must not undercut). A prior, much smaller 45-second default
+    # caused real LLM calls that were still comfortably within that
+    # 300-second per-call ceiling to be aborted early with "Request exceeded
+    # the time limit of 45 seconds.".
+    llm_request_timeout_seconds: float = 290.0
 
 
 def get_settings() -> Settings:

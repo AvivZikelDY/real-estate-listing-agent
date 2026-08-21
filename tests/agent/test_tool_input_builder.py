@@ -218,6 +218,23 @@ def test_build_tool_input_uses_service_type_argument_for_nearby_services() -> No
     assert result.categories == ["park"]
 
 
+def test_extract_nearby_query_argument_finds_service_singular_alias() -> None:
+    """A real-LLM-observed variant: `service` (singular, not `service_type`
+    or `services`) holding a single free-text category value."""
+    assert extract_nearby_query_argument({"service": "park"}) == "park"
+
+
+def test_build_tool_input_uses_service_singular_argument_for_nearby_services() -> None:
+    call = ToolCall(
+        tool="nearby_services",
+        arguments={"address_claim_id": "c1", "service": "park", "radius_m": 1000},
+    )
+    details = PropertyDetails(listing_type="unknown", raw_address="אבן גבירול 80, תל אביב")
+    result = build_tool_input(call, details, geo_output=_resolved_geo_output())
+    assert isinstance(result, NearbyServicesInput)
+    assert result.categories == ["park"]
+
+
 def test_extract_nearby_categories_argument_finds_services_alias() -> None:
     assert extract_nearby_categories_argument({"services": ["park", "school"]}) == [
         "park",

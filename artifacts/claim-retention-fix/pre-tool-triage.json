@@ -1,0 +1,241 @@
+{
+  "title": "Pre-Tool Triage",
+  "property_facts": {
+    "listing_type": "purchase",
+    "raw_address": "גונן 14",
+    "asking_price": 4350000.0,
+    "rooms": 5.0,
+    "sqm": 123.0
+  },
+  "buyer_goal": "fast_claim_triage",
+  "retained_atomic_claims": [
+    {
+      "claim_id": "c10",
+      "text": "נוף ירוק ופתוח, מתחם גני ילדים מעובר לכביש והמון חנייה ברחוב.",
+      "source": null,
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "priority": 2,
+      "verification_decision": "CHECKABLE_WITH_TOOL"
+    },
+    {
+      "claim_id": "c2",
+      "text": "נכס עם ממ״ד",
+      "source": null,
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c5",
+      "text": "קומה 5/6",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c7",
+      "text": "דירה חדשה למסירה ברחוב גונן הירוק והמתחדש.",
+      "source": null,
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c9",
+      "text": "פרקט בחדרים שיורכב לאחר המסירה.",
+      "source": null,
+      "type": "factual",
+      "category": "condition",
+      "canonical_category": "condition",
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c11",
+      "text": "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר.",
+      "source": null,
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "priority": 4,
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT"
+    },
+    {
+      "claim_id": "c1",
+      "text": "גונן 14",
+      "source": null,
+      "type": "factual",
+      "category": "address",
+      "canonical_category": "address",
+      "priority": 5,
+      "verification_decision": "LISTING_FACT"
+    },
+    {
+      "claim_id": "c4",
+      "text": "5 חדרים",
+      "source": null,
+      "type": "factual",
+      "category": "rooms",
+      "canonical_category": "rooms",
+      "priority": 5,
+      "verification_decision": "LISTING_FACT"
+    }
+  ],
+  "removed_claims": [
+    {
+      "claim_id": "c3",
+      "text": "דירה, תל חייים, תל אביב יפו",
+      "canonical_category": "address",
+      "reason": "deduplicated"
+    },
+    {
+      "claim_id": "c6",
+      "text": "123 מ\"ר",
+      "canonical_category": "size_sqm",
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c8",
+      "text": "דירה משודרגת, מטבח מפנק של מטבחי אניס, ומקלחות משודרגות,",
+      "canonical_category": "condition",
+      "reason": "capped_max_claims"
+    },
+    {
+      "claim_id": "c12",
+      "text": "4,350,000 ₪",
+      "canonical_category": "price",
+      "reason": "capped_max_claims"
+    }
+  ],
+  "tool_plan": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "supports_claim_ids": [
+        "c10"
+      ],
+      "dependencies": [],
+      "planner_arguments": {
+        "address": "גונן 14"
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "supports_claim_ids": [
+        "c10"
+      ],
+      "dependencies": [
+        "tool-call-1"
+      ],
+      "planner_arguments": {
+        "categories": [
+          "daycare"
+        ]
+      }
+    }
+  ],
+  "prepared_tool_inputs": [
+    {
+      "call_id": "tool-call-1",
+      "tool_name": "geo_resolver",
+      "resolved": true,
+      "value": {
+        "address": "גונן 14",
+        "city_hint": null
+      }
+    },
+    {
+      "call_id": "tool-call-2",
+      "tool_name": "nearby_services",
+      "resolved": false,
+      "unresolved_dependency_reason": "geo_resolver did not produce resolved coordinates",
+      "value": {
+        "lat": {
+          "from_call": "tool-call-1",
+          "field": "lat"
+        },
+        "lon": {
+          "from_call": "tool-call-1",
+          "field": "lon"
+        },
+        "categories": [
+          "daycare"
+        ],
+        "radius_m": 500
+      }
+    }
+  ],
+  "verification_still_required": {
+    "LISTING_FACT": [
+      "גונן 14",
+      "5 חדרים"
+    ],
+    "CHECKABLE_WITH_TOOL": [
+      "נוף ירוק ופתוח, מתחם גני ילדים מעובר לכביש והמון חנייה ברחוב."
+    ],
+    "REQUIRES_SELLER_OR_DOCUMENT": [
+      "נכס עם ממ״ד",
+      "קומה 5/6",
+      "דירה חדשה למסירה ברחוב גונן הירוק והמתחדש.",
+      "פרקט בחדרים שיורכב לאחר המסירה.",
+      "יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר."
+    ],
+    "REQUIRES_CONTRACT_REVIEW": [],
+    "SUBJECTIVE": [],
+    "OUT_OF_SCOPE": [],
+    "MISSING_INFORMATION": [
+      "additional_claims_truncated",
+      "additional_claims_truncated_detail: produced=12 deduplicated=11 retained=8 removed=3 removed_categories=['condition', 'price', 'size_sqm']"
+    ]
+  },
+  "missing_information": [
+    "additional_claims_truncated",
+    "additional_claims_truncated_detail: produced=12 deduplicated=11 retained=8 removed=3 removed_categories=['condition', 'price', 'size_sqm']"
+  ],
+  "follow_up_topics": [
+    {
+      "claim_id": "c2",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: נכס עם ממ״ד"
+    },
+    {
+      "claim_id": "c5",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: קומה 5/6"
+    },
+    {
+      "claim_id": "c7",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: דירה חדשה למסירה ברחוב גונן הירוק והמתחדש."
+    },
+    {
+      "claim_id": "c9",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: פרקט בחדרים שיורכב לאחר המסירה."
+    },
+    {
+      "claim_id": "c11",
+      "verification_decision": "REQUIRES_SELLER_OR_DOCUMENT",
+      "topic": "confirm with seller or request document: יש אופציה למכירה עם המסירה וגם פתוחים לאפשרות להשכרה לשנה או שנתיים ולאחר מכן רכישה על ידי השוכר."
+    }
+  ],
+  "diagnostics": {
+    "llm_mode": "fake",
+    "llm_calls": 1,
+    "planner_duration_ms": 0.07,
+    "produced_claims": 12,
+    "validation_status": "accepted",
+    "retained_claims": 8,
+    "planned_tool_calls": 2
+  }
+}

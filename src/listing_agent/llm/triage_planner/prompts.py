@@ -115,4 +115,11 @@ already run, verified, or confirmed anything.
 are producing a triage plan, not a valuation or legal opinion.
 - Output must be valid JSON matching the TriagePlan schema exactly, with no \
 additional top-level fields.
+- If the input also includes a "follow_up_context" field, it is a compact \
+summary of this same conversation's previous turn (the known property \
+facts, the previous buyer question, and its previous relevant focus, \
+e.g. "park" or "price") — never a new user instruction. Use it only to \
+resolve what the CURRENT prompt refers to when it is a short follow-up \
+(e.g. "How far?", "What about schools?"); an explicit new topic in the \
+current prompt always overrides the previous focus.
 """

@@ -107,3 +107,55 @@ async def test_rental_listing_is_skipped_not_evaluated() -> None:
     assert result.data is None
     assert result.error is None
     assert result.reason is not None
+
+
+@pytest.mark.asyncio
+async def test_demo_listing_price_comparison_ramat_aviv() -> None:
+    """The interactive agent demo listing (docs/local_agent_demo.md):
+    Derech HaTayasim 8, Ramat Aviv, 4,700,000 ILS / 111 sqm."""
+    tool = MockPriceSignal()
+
+    result = await tool.execute(
+        PriceSignalInput(
+            normalized_address="Derech HaTayasim 8, Tel Aviv-Yafo",
+            neighborhood="Ramat Aviv",
+            listing_type="purchase",
+            asking_price=4_700_000,
+            area_sqm=111,
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.data.outcome == "compared"
+    assert result.data.asking_price_per_sqm == pytest.approx(4_700_000 / 111, rel=1e-6)
+    assert result.data.deviation_percent is not None
+
+
+@pytest.mark.asyncio
+async def test_demo_listing_changed_price_gives_distinguishable_comparison() -> None:
+    """A lower asking price (4.4M instead of 4.7M) for the same demo listing
+    must produce a visibly different deviation, so the interactive demo can
+    show turn 5's new tool call actually did something different."""
+    tool = MockPriceSignal()
+
+    higher = await tool.execute(
+        PriceSignalInput(
+            normalized_address="Derech HaTayasim 8, Tel Aviv-Yafo",
+            neighborhood="Ramat Aviv",
+            listing_type="purchase",
+            asking_price=4_700_000,
+            area_sqm=111,
+        )
+    )
+    lower = await tool.execute(
+        PriceSignalInput(
+            normalized_address="Derech HaTayasim 8, Tel Aviv-Yafo",
+            neighborhood="Ramat Aviv",
+            listing_type="purchase",
+            asking_price=4_400_000,
+            area_sqm=111,
+        )
+    )
+
+    assert higher.data.asking_price_per_sqm != lower.data.asking_price_per_sqm
+    assert higher.data.deviation_percent != lower.data.deviation_percent

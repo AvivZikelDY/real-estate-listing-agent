@@ -228,6 +228,30 @@ cover, at minimum:
   with Aviv first since it must fit the existing stack (Python 3.12,
   httpx for any outbound HTTP calls, Pydantic v2 for data shapes).
 
+## Stateful follow-up context/caching (new — does not affect you)
+
+Aviv added an optional, in-memory "conversation follow-up" feature (see
+`docs/follow_up_context_plan.md`) that lets a buyer ask follow-up
+questions about the same listing without repeating tool calls. This is
+implemented entirely **above** the `ToolExecutor` seam
+(`src/listing_agent/agent/conversation/`) and changes nothing about your
+tools:
+
+- Your tools' input/output schemas (`GeoResolverInput`/`Output`,
+  `NearbyServicesInput`/`Output`, `PriceSignalInput`/`Output`) are
+  completely unchanged.
+- `ToolRegistry`/`ToolExecutor` are unaware that reuse/caching exists —
+  whichever tool calls actually still need to run reach you exactly as
+  before, through the exact same `execute(input_model) -> ToolResult`
+  interface.
+- Nothing about a real MCP server or your real implementations is
+  required or assumed by this feature. It was validated only against the
+  mock tools and a fake in-memory stand-in for a future `McpToolExecutor`
+  (never a real MCP call) — see
+  `tests/agent/conversation/test_nir_boundary.py`.
+
+You do not need to do anything differently because of this feature.
+
 ## What Aviv provides in the meantime
 
 Until your real implementations land, `TOOLS_MODE=mock` (the default) uses

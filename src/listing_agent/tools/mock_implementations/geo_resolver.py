@@ -7,13 +7,24 @@ find this address" is a legitimate business outcome the tool successfully
 determined, not a technical failure of the tool itself.
 """
 
+import re
+
 from src.listing_agent.tools.schemas import GeoResolverInput, GeoResolverOutput, ToolResult
 
 _SOURCE = "mock_dataset"
 
+# Trailing punctuation the LLM planner sometimes leaves attached to
+# `raw_address` when it splits a longer sentence (e.g. "...תל אביב," before
+# the next clause). Stripped so lookups match the known-address table
+# regardless of this harmless formatting noise - never affects which
+# address the tool resolves to, only whether trailing punctuation blocks
+# an otherwise-exact match.
+_TRAILING_PUNCTUATION = re.compile(r"[,.;:\s]+$")
+
 
 def _normalize(address: str) -> str:
-    return " ".join(address.strip().lower().split())
+    collapsed = " ".join(address.strip().split())
+    return _TRAILING_PUNCTUATION.sub("", collapsed).lower()
 
 
 _KNOWN_ADDRESSES: dict[str, GeoResolverOutput] = {
@@ -27,6 +38,30 @@ _KNOWN_ADDRESSES: dict[str, GeoResolverOutput] = {
         source=_SOURCE,
     ),
 }
+
+# Second demo/interactive-agent-demo listing address (Derech HaTayasim 8,
+# Ramat Aviv). Several literal spellings are registered because
+# triage_planner extracts `raw_address` verbatim from whatever text the
+# buyer pasted - this keeps the interactive demo deterministic regardless
+# of small punctuation/suffix differences in the pasted listing text.
+_DERECH_HATAYASIM_OUTPUT = GeoResolverOutput(
+    outcome="resolved",
+    normalized_address="Derech HaTayasim 8, Tel Aviv-Yafo",
+    lat=32.1128,
+    lon=34.8042,
+    resolution_quality="exact",
+    neighborhood="Ramat Aviv",
+    source=_SOURCE,
+)
+for _demo_variant in (
+    "דרך הטייסים 8, תל אביב",
+    "דרך הטייסים 8, תל אביב-יפו",
+    "דרך הטייסים 8, תל אביב יפו",
+    "Derech HaTayasim 8, Tel Aviv",
+    "Derech HaTayasim 8, Tel Aviv-Yafo",
+    "8 Derech HaTayasim, Tel Aviv",
+):
+    _KNOWN_ADDRESSES[_normalize(_demo_variant)] = _DERECH_HATAYASIM_OUTPUT
 
 # A small hardcoded set of addresses known to match more than one plausible
 # location, used to exercise the "ambiguous" outcome deterministically.

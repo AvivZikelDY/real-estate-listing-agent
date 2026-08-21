@@ -46,6 +46,7 @@ async def collect_evidence(
     tracer: StepTracer,
     *,
     max_total_tool_execution_seconds: float = DEFAULT_MAX_TOTAL_TOOL_EXECUTION_SECONDS,
+    geo_output: GeoResolverOutput | None = None,
 ) -> tuple[list[ToolEvidence], list[str]]:
     """Execute `plan.tool_calls`, in order, and collect their evidence.
 
@@ -56,6 +57,13 @@ async def collect_evidence(
             `status="skipped"` (never attempted) instead of running - one
             slow tool call can never silently blow through an unbounded
             total request time.
+        geo_output: A pre-resolved `GeoResolverOutput` to seed dependent
+            tools with (conversation follow-up reuse). Used only when
+            `plan.tool_calls` does not itself include a `geo_resolver` call
+            this turn (e.g. it was reused from a stored conversation
+            context) - a `geo_resolver` call actually present in the plan
+            always produces its own fresh `geo_output`, overriding this
+            seed. `None` (the default) preserves today's exact behavior.
 
     Returns:
         A `(tool_results, executed_tools)` pair. `tool_results` has one
@@ -75,7 +83,6 @@ async def collect_evidence(
     # here, so dependent tools are skipped exactly the same way - a failed
     # prerequisite never silently blocks the rest of the request, it only
     # prevents the specific tools that need its result.
-    geo_output: GeoResolverOutput | None = None
     total_tool_execution_seconds = 0.0
 
     for call in plan.tool_calls:

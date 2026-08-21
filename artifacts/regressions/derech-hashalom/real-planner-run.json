@@ -1,0 +1,137 @@
+{
+  "title": "Real planner run (raw, pre-validation state) - derech-hashalom",
+  "provenance": {
+    "note": "Reconstructed, without any additional LLM call, from the single authorized real LLMod planner call already captured in pre-tool-triage.json for this listing. property_details and buyer_goal are untouched by validate_plan, so they are identical to the raw triage_planner output. raw_claims is the exact union of that file's retained_atomic_claims and removed_claims (8 + 7 = 15, matching diagnostics.produced_claims=15 below) - i.e. every claim the real LLM produced, tagged with what validate_plan subsequently did to it. The raw (pre-validation) tool_calls the planner itself proposed are NOT separately recorded by this diagnostic version and are not reconstructable without a second real LLM call, which this task does not authorize; only the final validated tool_plan (in pre-tool-triage.json) is available.",
+    "planner_mode": "real",
+    "llm_calls": 1,
+    "tools_executed": false,
+    "mcp_called": false,
+    "external_provider_called": false,
+    "report_writer_called": false
+  },
+  "property_details": {
+    "listing_type": "purchase",
+    "raw_address": "דרך השלום\nמקלט במרחק 183 מ׳\nדירה, תל חייים, תל אביב יפו",
+    "asking_price": 2890000.0,
+    "rooms": 2.5,
+    "sqm": 60.0
+  },
+  "buyer_goal": "fast_claim_triage",
+  "raw_claims_count": 15,
+  "raw_claims": [
+    {
+      "text": "מיקומים נהדר גובל בגבעותיים,",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "פארק וולפסון,",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "רכבת קלה,",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "ביצרון,",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "יצחק שדה ועוד.",
+      "type": "factual",
+      "category": "nearby_amenities",
+      "canonical_category": "nearby_amenities",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "התוכנית הופקדה!",
+      "type": "factual",
+      "category": "transaction_structure",
+      "canonical_category": "transaction_structure",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "היזם \"אורון נדל\"ן\" - הסכם חתום.",
+      "type": "factual",
+      "category": "transaction_structure",
+      "canonical_category": "transaction_structure",
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "דירת תמורה:",
+      "type": "factual",
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "retained"
+    },
+    {
+      "text": "הזדמנויות יוצרות עם החלל לעסקת השבחה והתחדרשות עירונית בתל אביב.",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "82 מ\"ר",
+      "type": null,
+      "category": null,
+      "canonical_category": "size_sqm",
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "פלוס 12 מ\"ר מרפסת",
+      "type": null,
+      "category": null,
+      "canonical_category": "size_sqm",
+      "post_validation_status": "removed (deduplicated)"
+    },
+    {
+      "text": "חניה",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "מחסן",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "תפנה לרחוב עמישב",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    },
+    {
+      "text": "קומה 5",
+      "type": null,
+      "category": null,
+      "canonical_category": null,
+      "post_validation_status": "removed (capped_max_claims)"
+    }
+  ],
+  "diagnostics": {
+    "llm_mode": "real",
+    "llm_calls": 1,
+    "planner_duration_ms": 167141.34,
+    "produced_claims": 15,
+    "validation_status": "accepted",
+    "retained_claims": 8,
+    "planned_tool_calls": 2
+  }
+}

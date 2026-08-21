@@ -337,12 +337,14 @@ def resolve_nearby_categories(
 
 # Fixed, deterministic priority order of alternate free-text argument names
 # a planner may use instead of `query` (observed during real-LLM
-# verification, e.g. `service_type`) to describe what nearby category it
-# wants. Never a substitute for `categories` - only consulted by
-# `extract_nearby_query_argument` when `query` itself is absent.
+# verification, e.g. `service_type`, and `service` singular) to describe
+# what nearby category it wants. Never a substitute for `categories` - only
+# consulted by `extract_nearby_query_argument` when `query` itself is
+# absent.
 _NEARBY_QUERY_ARGUMENT_ALIASES: tuple[str, ...] = (
     "query",
     "service_type",
+    "service",
     "category",
     "amenity_type",
     "amenity",

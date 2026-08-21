@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: nothing in this workflow needs to write to the repository,
+# and a read-only token cannot be abused by a compromised dependency.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Hash-verified install, lint, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Actions are pinned to full commit SHAs, not tags: a tag can be moved to
+      # point at attacker-controlled code, a commit SHA cannot.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # Installs with --require-hashes, --only-binary=:all: and
+      # --uploaded-prior-to=P7D. Any tampered artifact, any sdist that wants to
+      # run build code, or any release younger than the cooldown fails the job.
+      - name: Install dependencies (hash-verified)
+        run: scripts/install_deps.sh --dev
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Tests
+        run: pytest -q
+
+  lock-drift:
+    name: Lock file is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+
+      # A hand-edited requirements file would let an unpinned or unhashed
+      # dependency slip in, so regenerate everything and require it to match
+      # exactly what was committed.
+      - name: Regenerate lock and exports
+        run: scripts/lock_deps.sh
+
+      - name: Fail if lock or exports drifted from pyproject.toml
+        run: git diff --exit-code -- uv.lock requirements.txt requirements-dev.txt requirements-build.txt

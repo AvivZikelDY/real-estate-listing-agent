@@ -1,0 +1,107 @@
+Pre-Tool Triage (focused)
+=========================
+
+PROPERTY CONTEXT
+----------------
+- address: דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו
+- city/neighborhood: תל אביב
+- listing_type: purchase
+- asking_price: 3600000.0
+- sqm: 58.0
+- rooms: 2.0
+
+RELEVANT CLAIMS FOUND
+---------------------
+- נכס עם ממ"ד
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- שוק הפשפשים
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- העין העיתיקה
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- כיכר השעון
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- מעלית
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- חניה פרטית
+  source: listing
+  type: nearby
+  supported by current tools: no
+  reason: unsupported nearby category
+  tool: none
+
+- Buyer question: is the asking price below or at market price for this listing? (Derived from the price_validation goal - not a seller claim.)
+  source: derived
+  type: price comparison
+  supported by current tools: yes
+  reason: comparative price claim - checkable with price_signal
+  planned tool: price_signal
+  supports_claim_ids: ['claim-derived-price-comparison']
+
+PRICE
+-----
+- asking price found: yes
+- comparative listing claim found: no
+- comparative buyer question found: yes
+- price_signal: NEEDED
+
+FINAL TOOL PLAN
+---------------
+1. geo_resolver
+   supports: ['c1', 'c3', 'c4', 'c5', 'c12', 'c13', 'claim-derived-price-comparison']
+   input:
+   {
+     "address": "דירה, צפון יפו, המושבה האמריקאית-גרמנית, תל אביב יפו",
+     "city_hint": "תל אביב"
+   }
+
+2. price_signal
+   supports: ['claim-derived-price-comparison']
+   depends_on: ['tool-call-1']
+   input (unresolved until dependency runs):
+   {
+     "normalized_address": {
+       "from_call": "tool-call-1",
+       "field": "normalized_address"
+     },
+     "neighborhood": {
+       "from_call": "tool-call-1",
+       "field": "neighborhood"
+     },
+     "listing_type": "purchase",
+     "asking_price": 3600000.0,
+     "area_sqm": 58.0
+   }
+
+MISSING INFORMATION
+-------------------
+(none affecting a relevant nearby/price check)
+
+OTHER LISTING CONTENT
+---------------------
+Additional seller claims were present but are outside the current evidence scope and were not analyzed for external verification.
+(re-run with --verbose to see the full claim-by-claim analysis)

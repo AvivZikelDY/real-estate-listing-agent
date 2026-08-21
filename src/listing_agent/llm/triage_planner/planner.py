@@ -21,6 +21,7 @@ async def run_triage_planner(
     prompt: str,
     client: LLMClient,
     tracer: StepTracer,
+    follow_up_context: str | None = None,
 ) -> TriagePlan:
     """Run the triage_planner LLM module and return the resulting plan.
 
@@ -28,8 +29,16 @@ async def run_triage_planner(
         prompt: The complete user input, exactly as submitted.
         client: The injected `LLMClient` implementation to call.
         tracer: The `StepTracer` used to record this LLM call.
+        follow_up_context: Optional compact follow-up context (Phase 3,
+            `agent.conversation.build_compact_follow_up_context`) - the
+            known property facts, the previous buyer question, and the
+            previous turn's focus. `None` (the default, and always the
+            case for a stateless/first-turn request) preserves the exact
+            original `user_payload` shape.
     """
-    user_payload = {"prompt": prompt}
+    user_payload: dict[str, str] = {"prompt": prompt}
+    if follow_up_context is not None:
+        user_payload["follow_up_context"] = follow_up_context
     return await tracer.call(
         client=client,
         module=MODULE_NAME,
