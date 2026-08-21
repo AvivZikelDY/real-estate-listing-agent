@@ -163,3 +163,27 @@ def test_compact_bundle_tool_result_excludes_raw_output_and_transport_metadata()
     assert "attempts" not in tool_result
     assert tool_result["observations"] == {"outcome": "resolved", "lat": 32.08, "lon": 34.77}
     assert tool_result["claim_id"] == "claim-0"
+
+
+def test_system_prompt_scopes_missing_information_and_questions_to_current_turn() -> None:
+    """The report must not claim asking_price/rooms/sqm are required for a
+    nearby-only question, must scope "missing information" to what the
+    current turn's check actually needs, and must never proactively push
+    price_signal when the buyer did not ask about price."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "nearby_services-only question does not need asking_price/rooms/sqm" in prompt
+    assert "actually needed for the check(s) the buyer is asking about" in prompt
+    assert "Never proactively suggest, recommend, or ask about running price_signal" in prompt
+
+
+def test_system_prompt_avoids_redundant_address_and_comparable_sales_requests() -> None:
+    """When geo_resolver already resolved the address and price_signal
+    already returned comparison figures this turn, the report must not ask
+    the buyer to re-supply either (Phase 0 price-signal regression follow-up)."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "reconfirm, restate, or provide the address" in prompt
+    assert "provide comparable sale prices, market" in prompt
