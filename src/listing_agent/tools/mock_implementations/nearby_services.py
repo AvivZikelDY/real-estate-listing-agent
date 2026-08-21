@@ -29,6 +29,18 @@ _SERVICES = [
     {"category": "school", "name": "Gymnasia Herzliya", "lat": 32.0802, "lon": 34.7751},
     {"category": "park", "name": "Independence Park", "lat": 32.0870, "lon": 34.7721},
     {"category": "pharmacy", "name": "Super-Pharm HaYarkon", "lat": 32.0851, "lon": 34.7745},
+    # A second small demo dataset near Derech HaTayasim 8, Ramat Aviv
+    # (interactive agent demo listing) - used to exercise the multi-turn
+    # follow-up/reuse flow with a second, distinct location.
+    {"category": "park", "name": "Wolfson Park (Ramat Aviv)", "lat": 32.1140, "lon": 34.8032},
+    {"category": "school", "name": "Ramat Aviv Gymnasia", "lat": 32.1110, "lon": 34.8060},
+    {"category": "daycare", "name": "Ramat Aviv Daycare Center", "lat": 32.1135, "lon": 34.8050},
+    {
+        "category": "public_transport",
+        "name": "Ramat Aviv Bus Station",
+        "lat": 32.1122,
+        "lon": 34.8030,
+    },
 ]
 
 

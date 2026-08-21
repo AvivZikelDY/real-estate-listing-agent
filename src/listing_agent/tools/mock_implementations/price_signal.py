@@ -26,6 +26,7 @@ _DATASET_LIMITATION = (
 _PURCHASE_TRANSACTIONS_ILS_PER_SQM: dict[str, list[float]] = {
     "old north (hatzafon hayashan)": [38_000, 40_500, 42_000, 39_000, 41_000],
     "florentin": [27_000, 28_500, 26_000, 29_000],
+    "ramat aviv": [33_500, 35_000, 34_000, 36_000, 34_500],
 }
 
 
