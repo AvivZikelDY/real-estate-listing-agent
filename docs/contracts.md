@@ -328,13 +328,31 @@ response schemas will be defined in Phase 1.
 ## 4. Tool Contracts (Nir's implementation surface)
 
 These are the exact function-level contracts Nir's real implementations
-must satisfy (formalized as Pydantic v2 models in
-`src/listing_agent/tools/schemas.py`). Aviv provides mock implementations
-conforming to the same contract for testing; Nir replaces the internals
-only, not the interface. Every tool implements `BaseTool`
+satisfy (formalized as Pydantic v2 models in
+`src/listing_agent/tools/schemas.py`). Aviv's mock implementations conform
+to the same contract for fast/offline testing; Nir's real implementations
+replace the internals only, not the interface — the schemas below were
+never changed during integration. Every tool implements `BaseTool`
 (`src/listing_agent/tools/base.py`) and returns a `ToolResult[...]`
 envelope — see `docs/nir_handoff.md` for the full contract, including
 error/skip behavior and required tests.
+
+**Which implementation runs — `TOOLS_MODE`:** the `TOOLS_MODE` environment
+variable (`Settings.tools_mode`, see `src/listing_agent/tools/dependency.py`)
+selects the whole tool set for a process, never per-request:
+- `TOOLS_MODE=mock` (the default) uses Aviv's small, hardcoded
+  `Mock*` implementations under `src/listing_agent/tools/mock_implementations/`
+  — fast, offline, deterministic; used by the entire pytest suite.
+- `TOOLS_MODE=nir` uses Nir's real `Nir*` implementations under
+  `src/listing_agent/tools/nir_implementations/`: `geo_resolver` calls live
+  GovMap, `nearby_services` queries an OSM/Overpass-derived snapshot, and
+  `price_signal` compares against live GovMap transaction data (with a
+  typed technical-failure fallback, distinct from a genuine
+  "no comparable data" business outcome). Rental listings still return
+  `status="skipped"` for `price_signal` under this mode too.
+Neither `ToolRegistry`/`ToolExecutor` nor the tools themselves know that
+`ConversationContext`/evidence-reuse exists (see §2 and
+`docs/nir_handoff.md`) — that logic sits strictly above this seam.
 
 **`ToolResult.status` semantics** (frozen across all three tools):
 `"ok"` means the tool ran and produced a well-formed answer — **including
@@ -520,12 +538,15 @@ of the pipeline.
 | `max_prompt_length`                   | 4000    | LLM token cost; checked *before* `triage_planner` runs |
 | `max_claims`                          | 8       | Evidence Bundle / `report_writer` payload size         |
 | `max_tool_calls`                      | 3       | Tool-execution cost/latency (already ≤3 whitelisted tools) |
-| `max_total_tool_execution_seconds`    | 20.0    | Cumulative tool latency across one request             |
-| `llm_request_timeout_seconds`         | 300.0   | Overall `/api/execute` wall-clock time; configurable via `LLM_REQUEST_TIMEOUT_SECONDS`, defaults to the assignment's own 300s "no more than 5 minutes to get an answer" ceiling |
+| `tool_timeout_seconds`                | 120.0   | Per-call timeout for a single tool execution (`TOOL_TIMEOUT_SECONDS`); raised from the original 8.0s mock-only default to accommodate Nir's live GovMap/Overpass round-trips |
+| `max_total_tool_execution_seconds`    | 240.0   | Cumulative tool latency across one request (`MAX_TOTAL_TOOL_EXECUTION_SECONDS`) |
+| `llm_request_timeout_seconds`         | 290.0   | Overall `/api/execute` wall-clock time (`LLM_REQUEST_TIMEOUT_SECONDS`); must stay above `max_total_tool_execution_seconds` so a live-tool run is never cut off mid-flight, and below the assignment's 300s "no more than 5 minutes to get an answer" ceiling |
 
-These are conservative *defaults* appropriate for a university project's
-real, mocked tool latencies - not tuned for a production SLA. They are
-all overridable via environment variables/`Settings` without code changes.
+These are conservative *defaults*, sized for `TOOLS_MODE=nir`'s real,
+network-backed tool latencies (they were smaller — 8s / 20s / 300s — when
+only the mock tools existed). They are all overridable via environment
+variables/`Settings` without code changes, and remain safe for
+`TOOLS_MODE=mock`'s near-instant calls too.
 
 ### Enforcement points
 
@@ -570,3 +591,52 @@ all overridable via environment variables/`Settings` without code changes.
 None of the above adds an LLM call: the normal path is still exactly one
 `triage_planner` call followed by deterministic tool execution and exactly
 one `report_writer` call.
+
+---
+
+## 7. Known Non-Blocking Limitations (post-integration)
+
+These are known, intentional gaps in the merged system. None of them are
+defects in the deterministic pipeline (planner → validator → evidence
+collection/cache → report writer); they are either provider-side
+characteristics of Nir's real tools or accepted scope limits for a
+university project. None block normal operation.
+
+- **`price_signal` does not accept `lat`/`lon`.** `PriceSignalInput` only
+  carries `normalized_address`/`neighborhood`, so `NirPriceSignal` may
+  perform its own internal address/coordinate lookup even when
+  `geo_resolver` already ran and its coordinates are cached for this
+  conversation. This is a real, known optimization gap (one extra
+  provider round-trip on some price-check turns), not a caching bug —
+  Aviv's cache still correctly reuses the `geo_resolver` result itself at
+  the agent/evidence layer.
+- **The asyncio-based per-tool/per-request timeouts (`tool_timeout_seconds`,
+  `max_total_tool_execution_seconds`, `llm_request_timeout_seconds`) are
+  process-wide `asyncio.wait_for` deadlines**, not a fine-grained
+  per-provider-call budget; a single slow upstream call can still consume
+  most of a tool's allotted time before the deadline fires.
+- **`rooms` is accepted by `PriceSignalInput` but not currently used in
+  Nir's comparison math** — it is carried through the schema for future
+  use/back-compat but does not affect `outcome`/figures today.
+- **Mock vs. Nir neighborhood/source language differs.** `Mock*`
+  implementations use small hardcoded neighborhood names/sources;
+  `Nir*` implementations return GovMap/OSM-derived names and source
+  strings. Both satisfy the same schema; only the *content* differs.
+  Report text should never assume one specific vocabulary.
+- **In-memory `ConversationContext` is intentionally non-persistent** — no
+  TTL, no eviction policy, no cross-process/restart persistence, no
+  database. This is a deliberate scope limit (see the hard prohibition on
+  databases/persistence for this project), not an oversight.
+- **Live-provider transient failures are expected and handled, not
+  eliminated.** Overpass mirrors occasionally return `502`/`500`/timeout;
+  Nir's client falls back to a secondary mirror internally. When both
+  fail, the affected turn correctly surfaces `status="error"` (a genuine
+  technical failure) and is never cached — a later turn with the same
+  input will simply retry.
+- **LLM tool-selection can be non-deterministic between otherwise-identical
+  runs** (e.g. the same short follow-up prompt may occasionally be
+  classified under a different `buyer_goal`). The deterministic layers
+  (validator, cache, evidence collection, report writer) behave correctly
+  regardless of which `buyer_goal`/plan the LLM produces for a given turn —
+  this is an LLM classification-variance characteristic, not a pipeline
+  defect.

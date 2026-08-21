@@ -1,5 +1,12 @@
 # Handoff to Nir — Tools Implementation
 
+**Status: integrated.** Nir's real implementations have landed and been
+merged with Aviv's conversation/cache feature branch on
+`integration/tools-and-context`. The sections below are kept largely as
+originally written (they remain the accurate contract/ownership
+reference), with status notes added where the original text described
+future/in-progress work that is now done.
+
 ## What you own
 
 You own **only** the real implementations and data sources for these three
@@ -15,7 +22,8 @@ LLM modules, the GUI, or the tests outside `tests/tools/`.
 
 ## Where your code goes
 
-Your placeholder classes already exist and are wired into the app:
+Your real implementations are in place and wired into the app (no longer
+`NotImplementedError` placeholders):
 
 ```
 src/listing_agent/tools/nir_implementations/geo_resolver.py      -> NirGeoResolver
@@ -23,20 +31,21 @@ src/listing_agent/tools/nir_implementations/nearby_services.py   -> NirNearbySer
 src/listing_agent/tools/nir_implementations/price_signal.py      -> NirPriceSignal
 ```
 
-Each placeholder currently raises `NotImplementedError` with a `TODO(Nir)`
-comment describing exactly what to build. Replace the body of each
-`execute()` method with your real logic — do not change the class name,
-the `name` attribute, or the method signature. Add any helper modules or
-local data files you need inside `src/listing_agent/tools/nir_implementations/`.
+`NirGeoResolver` resolves against live GovMap; `NirNearbyServices` queries
+an OSM/Overpass-derived snapshot (with mirror fallback on transient
+failures); `NirPriceSignal` compares against live GovMap transaction data,
+with rental listings skipped and technical failures kept distinguishable
+from a genuine "no comparable data" business outcome.
 
 Which implementation actually runs is controlled by the `TOOLS_MODE`
 environment variable (see `src/listing_agent/tools/dependency.py`):
-- `TOOLS_MODE=mock` (the default while you're working) uses Aviv's
-  `Mock*` stand-ins under `src/listing_agent/tools/mock_implementations/`.
+- `TOOLS_MODE=mock` (the default, used by the entire pytest suite) uses
+  Aviv's `Mock*` stand-ins under `src/listing_agent/tools/mock_implementations/`.
   **Your `Nir*` classes are never selected in this mode.**
-- `TOOLS_MODE=nir` uses your real `Nir*` classes.
+- `TOOLS_MODE=nir` uses your real `Nir*` classes, backed by live
+  GovMap/Overpass calls.
 
-Add/extend your tests under:
+Your tests live under:
 ```
 tests/tools/
 ```
@@ -228,36 +237,59 @@ cover, at minimum:
   with Aviv first since it must fit the existing stack (Python 3.12,
   httpx for any outbound HTTP calls, Pydantic v2 for data shapes).
 
-## Stateful follow-up context/caching (new — does not affect you)
+## Stateful follow-up context/caching (integrated, does not affect you)
 
-Aviv added an optional, in-memory "conversation follow-up" feature (see
-`docs/follow_up_context_plan.md`) that lets a buyer ask follow-up
-questions about the same listing without repeating tool calls. This is
-implemented entirely **above** the `ToolExecutor` seam
-(`src/listing_agent/agent/conversation/`) and changes nothing about your
-tools:
+Aviv's optional, in-memory "conversation follow-up" feature (see
+`docs/contracts.md` §2 `agent_orchestrator` and
+`docs/follow_up_context_plan.md`) — which lets a buyer ask follow-up
+questions about the same listing without repeating tool calls — is now
+merged and verified against your real implementations, including under
+`TOOLS_MODE=nir` with live GovMap/Overpass. It remains implemented
+entirely **above** the `ToolExecutor` seam
+(`src/listing_agent/agent/conversation/`) and still changes nothing about
+your tools:
 
 - Your tools' input/output schemas (`GeoResolverInput`/`Output`,
   `NearbyServicesInput`/`Output`, `PriceSignalInput`/`Output`) are
-  completely unchanged.
-- `ToolRegistry`/`ToolExecutor` are unaware that reuse/caching exists —
+  completely unchanged by the merge.
+- `ToolRegistry`/`ToolExecutor` remain unaware that reuse/caching exists —
   whichever tool calls actually still need to run reach you exactly as
   before, through the exact same `execute(input_model) -> ToolResult`
-  interface.
-- Nothing about a real MCP server or your real implementations is
-  required or assumed by this feature. It was validated only against the
-  mock tools and a fake in-memory stand-in for a future `McpToolExecutor`
-  (never a real MCP call) — see
-  `tests/agent/conversation/test_nir_boundary.py`.
+  interface, whether `TOOLS_MODE` is `mock` or `nir`.
+- Cache keys are derived from the exact typed input each tool receives
+  (e.g. the geo cache key is built from `GeoResolverInput.model_dump()`),
+  so your city-hint canonicalization and address-normalization
+  improvements make the cache *more* stable across a conversation's turns,
+  not less — verified with a live multi-turn conversation (5 turns,
+  `TOOLS_MODE=nir`): repeated/short follow-ups correctly reused cached
+  `geo_resolver`/`nearby_services`/`price_signal` results, and a changed
+  `asking_price` correctly invalidated only the price cache entry, without
+  either of us needing to add TTL/LRU/Redis/vector memory or a second LLM
+  call.
+- One integration-time fix, in Aviv-owned code only: your
+  `build_tool_input` now raises `MissingDependencyError` for `geo_resolver`
+  itself when an address names no recognized city (previously only
+  `nearby_services`/`price_signal` could raise this). Aviv's
+  `agent/conversation/cache.py` and the diagnostic scripts were updated to
+  treat that as "not cacheable, let the normal skipped-evidence path
+  report it" rather than letting the exception escape the request. Your
+  `geo_resolver`'s own no-city refusal behavior (raising
+  `MissingDependencyError`, distinct from your `outcome="not_found"`
+  business result) is unchanged.
 
-You do not need to do anything differently because of this feature.
+## Known non-blocking limitations from the merge
 
-## What Aviv provides in the meantime
+- `PriceSignalInput` has no `lat`/`lon` field, so `NirPriceSignal` may
+  perform its own address/coordinate lookup even on a turn where
+  `geo_resolver`'s result is already cached and reused at the agent layer.
+  This is a known optimization gap, not a defect — not addressed in this
+  integration.
+- Transient Overpass mirror failures (502/500/timeout) are handled by your
+  existing fallback-mirror logic; on the rare case both mirrors fail, the
+  turn correctly returns `status="error"` and is never cached, so a later
+  identical turn simply retries.
 
-Until your real implementations land, `TOOLS_MODE=mock` (the default) uses
-Aviv's `Mock*` implementations (same interface, small hardcoded datasets)
-so the rest of the pipeline can be built and tested independently of your
-work.
+## What Aviv provided while your implementations were pending
 
 ## How to submit your work
 
