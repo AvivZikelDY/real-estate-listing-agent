@@ -1,12 +1,11 @@
 # Contracts
 
 This document defines the interface contracts between components of the
-Tel Aviv Real Estate Listing Triage Agent. These contracts are the source of
-truth for Phase 1+ implementation. **No code implementing these contracts
-exists yet — Phase 0 is documentation and scaffolding only.**
+Tel Aviv Real Estate Listing Triage Agent. These contracts are implemented
+now; this document remains the source of truth for the current shapes.
 
-All shapes below are described conceptually (field name: type) and will be
-formalized as Pydantic v2 models in Phase 1+.
+All shapes below are described conceptually (field name: type) and are
+formalized as Pydantic v2 models in the corresponding module.
 
 ---
 
@@ -336,7 +335,7 @@ Rules:
 
 A single abstraction both LLM modules call through, so the concrete
 LLMod.ai integration can be swapped/mocked in tests. Concrete request/
-response schemas will be defined in Phase 1.
+response schemas are defined in `src/listing_agent/llm/client/`.
 
 ---
 
@@ -360,11 +359,17 @@ selects the whole tool set for a process, never per-request:
   — fast, offline, deterministic; used by the entire pytest suite.
 - `TOOLS_MODE=nir` uses Nir's real `Nir*` implementations under
   `src/listing_agent/tools/nir_implementations/`: `geo_resolver` calls live
-  GovMap, `nearby_services` queries an OSM/Overpass-derived snapshot, and
-  `price_signal` compares against live GovMap transaction data (with a
-  typed technical-failure fallback, distinct from a genuine
-  "no comparable data" business outcome). Rental listings still return
-  `status="skipped"` for `price_signal` under this mode too.
+  GovMap, `nearby_services` queries OpenStreetMap live via Overpass, and
+  `price_signal` compares against live GovMap transaction data. All three
+  are live-only for a real runtime request — none of them reads a
+  snapshot file to answer; a genuine technical/transport failure (e.g. an
+  unreachable upstream) is surfaced as a typed `status="error"`, distinct
+  from a genuine "no comparable data" business outcome. Offline snapshot
+  files (`comparables_snapshot.json`, `poi_snapshot.json`) and their
+  generator scripts still exist as regeneratable development
+  extracts/fixtures, but nothing in the live request path reads them.
+  Rental listings still return `status="skipped"` for `price_signal` under
+  this mode too.
 Neither `ToolRegistry`/`ToolExecutor` nor the tools themselves know that
 `ConversationContext`/evidence-reuse exists (see §2 and
 `docs/nir_handoff.md`) — that logic sits strictly above this seam.
@@ -641,7 +646,19 @@ university project. None block normal operation.
 - **In-memory `ConversationContext` is intentionally non-persistent** — no
   TTL, no eviction policy, no cross-process/restart persistence, no
   database. This is a deliberate scope limit (see the hard prohibition on
-  databases/persistence for this project), not an oversight.
+  databases/persistence for this project), not an oversight. Stateless
+  single-turn execution (no `conversation_id`, or an unknown one) is fully
+  supported and unaffected. A multi-turn follow-up works correctly for as
+  long as the same server process keeps the conversation's context in
+  memory. Under a serverless deployment, a later turn is not guaranteed to
+  land on the same process/instance as the earlier one (e.g. after a cold
+  start, or on a different concurrent instance) - in that case the stored
+  context is simply absent, and a short semantic follow-up such as "כמה
+  רחוק?" ("how far?") may lose the property/topic it implicitly refers to,
+  since that reference lives only in the missing context. This is a
+  correctness limitation of the optional follow-up feature, not a
+  performance/caching detail, and not a failure of the required stateless
+  path. No persistence layer is added to close this gap.
 - **Live-provider transient failures are expected and handled, not
   eliminated.** Overpass mirrors occasionally return `502`/`500`/timeout;
   Nir's client falls back to a secondary mirror internally. When both

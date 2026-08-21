@@ -289,8 +289,6 @@ your tools:
   turn correctly returns `status="error"` and is never cached, so a later
   identical turn simply retries.
 
-## What Aviv provided while your implementations were pending
-
 ## How to submit your work
 
 1. Implement inside `src/listing_agent/tools/nir_implementations/` only.

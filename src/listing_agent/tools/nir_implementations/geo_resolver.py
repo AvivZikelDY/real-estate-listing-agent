@@ -8,14 +8,16 @@ one real place. If it does, it returns the canonical form, WGS84
 coordinates, and the neighbourhood. If it doesn't, it says so honestly
 rather than guessing.
 
->>> WHY THIS ONE IS LIVE, UNLIKE price_signal <<<
+>>> WHY THIS ONE IS LIVE, LIKE THE OTHER TWO <<<
 --------------------------------------------------
-`price_signal` reads a committed offline snapshot. This tool cannot, and
-the difference is worth understanding rather than treating as an
-inconsistency:
+All three tools (`geo_resolver`, `nearby_services`, `price_signal`) are
+live-only for a real runtime request today - none of them read a snapshot
+file to answer. `geo_resolver` in particular could never have used one:
 
   * `price_signal` needs AGGREGATE data over a FINITE set of
-    neighbourhoods. Ten buckets cover the city, so a snapshot works.
+    neighbourhoods - a snapshot would at least be structurally possible
+    there (an offline extract still exists for tests/reference, see
+    `govmap_client.py`, though the live path never reads it).
   * `geo_resolver` needs a LOOKUP over an INFINITE key space — every
     address anyone might type, including misspellings. A pre-fetched
     gazetteer would answer `not_found` for anything not on the list, which

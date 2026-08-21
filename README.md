@@ -1,11 +1,70 @@
 # Tel Aviv Real Estate Listing Triage Agent
 
-University AI Agents project. See `docs/scope.md`, `docs/contracts.md`, and
-`docs/nir_handoff.md` for architecture, contracts, and ownership. See
-`.github/copilot-instructions.md` for hard constraints on this repo.
+A university AI Agents project: an agent that triages a Tel Aviv
+real-estate listing and produces a buyer-facing, grounded report. Given a
+free-text listing (optionally with a buyer question or goal), it verifies
+only the intentionally supported external-evidence scope for that listing
+— it does not attempt to fact-check every claim in the text.
 
-**Status:** Phase 1 — Python/FastAPI bootstrap only. No assignment
-endpoints (besides `/health`), no LLM behavior, no tool behavior yet.
+See `docs/scope.md`, `docs/contracts.md`, and `docs/nir_handoff.md` for
+detailed scope, API/interface contracts, and tool-implementation context.
+See `.github/copilot-instructions.md` for hard constraints on this repo.
+
+## Architecture
+
+Normal execution uses exactly **two LLM calls**:
+
+1. `triage_planner` — reads the listing (and, on a follow-up turn, a
+   compact prior-turn context) and produces a plan of which supported
+   claims/questions to check and which tools that requires.
+2. `report_writer` — turns the collected evidence into the final
+   buyer-facing report.
+
+Everything between them is deterministic Python — no additional LLM calls:
+plan validation, tool-input building, evidence collection/execution,
+evidence-to-claim mapping, and evidence-bundle assembly, orchestrated by
+`agent_orchestrator` and recorded by `step_tracer`.
+
+Three deterministic tools supply external evidence when a plan calls for
+them:
+
+- `geo_resolver` — resolves an address/description to a location.
+- `nearby_services` — nearby points of interest for a given category.
+- `price_signal` — comparable-sale/price signal for a resolved location.
+
+Each tool has a `mock` implementation (small hardcoded fixtures, the
+default) and a live implementation (`TOOLS_MODE=nir`) that makes real
+external HTTP calls (GovMap, OpenStreetMap/Overpass). See
+`docs/contracts.md` for the full per-tool contract.
+
+## API
+
+The required endpoints:
+
+- `GET /api/team_info` — team/course metadata.
+- `GET /api/agent_info` — description, purpose, user-facing prompt
+  template, and worked prompt/response examples.
+- `GET /api/model_architecture` — a PNG diagram of the module/tool
+  topology.
+- `POST /api/execute` — runs the agent on `{"prompt": "...", "conversation_id":
+  "..." (optional)}` and returns exactly `{"status", "error", "response",
+  "steps"}`, where each item of `steps` is exactly
+  `{"module", "prompt", "response"}` for each LLM call made, in order.
+- `GET /` — the GUI (see below).
+
+`GET /health` also exists as an operational liveness check; it is not one
+of the four assignment API endpoints.
+
+## Conversation / follow-up support
+
+`conversation_id` is optional. Without it (or with an unknown id), a
+request is handled as a fresh, fully stateless single turn. When the same
+id is reused, the agent keeps a small structured "compact follow-up
+context" (not a transcript replay, not the raw report text) so a follow-up
+question can reuse the prior turn's resolved location/tool results where
+still valid, without spending an extra tool or LLM call. See
+`docs/contracts.md` for the exact fields kept and the current in-memory
+storage limitation.
 
 ## Requirements
 
@@ -36,11 +95,33 @@ Copy the environment example and adjust as needed:
 cp .env.example .env
 ```
 
+### Configuration
+
+Key settings (see `.env.example` for the full list):
+
+- `LLM_MODE` — `fake` (default) uses a deterministic offline
+  `FakeLLMClient`, useful for local development and the entire automated
+  test suite; `llmod` uses the real LLMod.ai client and makes live network
+  calls. **A deployed/submitted instance must explicitly set
+  `LLM_MODE=llmod`** — otherwise it silently serves fixture output.
+- LLMod credentials/base URL/model are read only from environment
+  variables (`LLMOD_API_KEY`, etc.); no secret is ever committed, logged,
+  or included in a traced step.
+- `TOOLS_MODE` — `mock` (default) uses small hardcoded fixture data;
+  `nir` uses the live GovMap/Overpass implementations. (This name will be
+  revisited in a later cleanup pass; it does not affect behavior.)
+
 ## Running tests
 
 ```bash
 pytest
 ```
+
+The automated suite runs fully offline (`LLM_MODE=fake`, `TOOLS_MODE=mock`)
+and covers the API contracts, the orchestrator pipeline, each LLM module,
+each tool (mock and live implementations), the conversation/follow-up
+layer, and a set of permanent regression tests pinning previously-found
+bugs.
 
 ## Linting
 
@@ -56,8 +137,12 @@ uvicorn app:app --reload
 
 Then visit:
 
-- `http://127.0.0.1:8000/` — placeholder GUI page
+- `http://127.0.0.1:8000/` — the GUI
 - `http://127.0.0.1:8000/health` — health check
+
+By default this runs with `LLM_MODE=fake`; set `LLM_MODE=llmod` (plus the
+`LLMOD_*` environment variables) in `.env` to exercise the real LLM
+provider.
 
 ## Regenerating the architecture diagram
 

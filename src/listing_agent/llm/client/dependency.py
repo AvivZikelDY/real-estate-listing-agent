@@ -2,7 +2,7 @@
 
 Selection is driven entirely by `Settings.llm_mode` (env var `LLM_MODE`):
 - "fake"  -> FakeLLMClient (deterministic, offline)
-- "llmod" -> LLModClient (real LLMod.ai client; network calls not implemented yet)
+- "llmod" -> LLModClient (real LLMod.ai client; makes live network calls)
 
 Any other value fails clearly and immediately.
 """

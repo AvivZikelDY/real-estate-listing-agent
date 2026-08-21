@@ -36,13 +36,16 @@ whether it points at exactly one real place.
 **Data source.** govmap `POST /search-service/autocomplete`. **Live** — 1
 call (~0.3s), or 3 with neighbourhood lookup.
 
-### Why this one is live while the others use snapshots
+### Why a snapshot could never work here (unlike price_signal/nearby_services)
 
 `price_signal` and `nearby_services` need aggregate data over a *finite*
-area, so a snapshot works. `geo_resolver` needs a lookup over an *unbounded*
-key space — every address anyone might type, including misspellings. A
-pre-fetched gazetteer would answer `not_found` for anything not on the list,
-silently turning real addresses into failures.
+area, so an offline extract is at least structurally possible there (both
+keep one, for tests/reference - neither is read by the live request path
+today). `geo_resolver` needs a lookup over an *unbounded* key space — every
+address anyone might type, including misspellings. A pre-fetched gazetteer
+would answer `not_found` for anything not on the list, silently turning
+real addresses into failures - so this tool was never snapshot-based to
+begin with.
 
 ### Flow
 
@@ -91,8 +94,9 @@ sales near the same address, and reports the deviation from the local median.
 A *signal*, never a valuation.
 
 **Data source.** govmap real-estate endpoints. **Live** (~1.2–1.7s
-end-to-end), falling back to `comparables_snapshot.json` if govmap is
-unreachable.
+end-to-end). There is no runtime snapshot fallback: a technical failure
+(unreachable, timeout, rate limit) propagates as `status="error"`, exactly
+like the other two tools.
 
 ### Flow — 4 HTTP calls
 
@@ -121,10 +125,14 @@ meaningless median. All the filtering that existed to repair that is gone.
 The ladder is not optional: a fixed radius of 10 found a parcel for 9 of 10
 test addresses but **nothing** for `דיזנגוף 200`, which needs 25.
 
-### The fallback rule
+### The runtime failure rule
 
-- **Technical failure** (unreachable, timeout, rate limit) → snapshot,
-  disclosed in `source` and `limitations`.
+- **Technical failure** (unreachable, timeout, rate limit) → typed
+  `status="error"`. There is no runtime snapshot fallback: a real
+  request either succeeds live or reports the failure honestly.
+  `comparables_snapshot.json` (see "Regenerating the data files" below)
+  is a regeneratable offline development extract used by tests/reference,
+  not read by the live request path.
 - **Empty live result** → **no fallback.** govmap saying "no recorded sales
   here" is a real answer; substituting data for a different area would turn
   an honest `no_comparable_data` into a confident wrong number.
@@ -170,23 +178,21 @@ so it holds regardless of what other fields are present.
 **What it does.** Finds schools, parks, supermarkets, pharmacies, daycares,
 transport stops and hospitals within a radius of the resolved coordinates.
 
-**Data source.** OpenStreetMap via Overpass. **Offline snapshot**
-(`poi_snapshot.json`, 2,949 places across Tel Aviv).
+**Data source.** OpenStreetMap via Overpass, queried **live** on every
+request, with mirror fallback (a different Overpass server, not a
+snapshot). There is no runtime offline snapshot: a transport failure
+across all mirrors propagates as `status="error"`, exactly like the other
+two tools.
 
-### Why a snapshot here
+### About `poi_snapshot.json`
 
-Overpass is a free, donation-funded query engine and is frequently
-overloaded — its canonical mirror returned **HTTP 504** on the first real
-query attempted during development. Per-request dependency would make the
-tool fail for reasons unrelated to the listing.
-
-A snapshot works because points of interest are a *fixed* set over a *fixed*
-area. It stores coordinates, not pre-computed answers, so it serves any
-point in the bounding box at any radius — the distance filtering is local
-arithmetic (`haversine_distance_m`).
-
-The live client (`overpass_client.py`) is fully written and is exercised
-every time the snapshot is regenerated. Switching over is marked `SWAP:`.
+Overpass is a free, donation-funded query engine and is occasionally
+overloaded or slow. `poi_snapshot.json` (2,949 places across Tel Aviv) and
+its generator (`build_poi_snapshot.py`) are a regeneratable offline
+development/test extract, kept for fast, deterministic tests and as a
+reference point - **the live request path never reads it.** The live
+client (`overpass_client.py`) is fully written and is exercised every time
+the snapshot is regenerated.
 
 ### Notes
 
@@ -212,9 +218,10 @@ every time the snapshot is regenerated. Switching over is marked `SWAP:`.
 | `build_snapshot.py` | regenerates `comparables_snapshot.json` |
 | `build_poi_snapshot.py` | regenerates `poi_snapshot.json` |
 
-Both clients return the **same types** the snapshots rehydrate into, so the
-live and offline paths are interchangeable and switching cannot silently
-change a number.
+Both clients return the **same types** the snapshot files rehydrate into
+(so tests exercising the offline extracts stay honest about the live
+shape), but only the generator scripts read the snapshot files - the live
+runtime request path never does.
 
 ### Regenerating the data files
 
