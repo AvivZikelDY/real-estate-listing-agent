@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Dependency upgrades arrive as reviewable PRs instead of drifting in
+  # silently. Each PR re-runs CI, so the hash-pinned exports and the cooldown
+  # guard are re-verified before anything is merged.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # Actions are pinned to commit SHAs; this keeps those pins moving forward
+  # instead of silently rotting on an unpatched version.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

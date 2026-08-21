@@ -22,6 +22,28 @@ dev = [
     "pillow",
 ]
 
+# Build backend requirements, mirrored from [build-system].requires so they can
+# be exported into a hash-pinned lock file. Installing these up front lets us
+# build the project with --no-build-isolation, which keeps pip from silently
+# fetching an unverified setuptools from the index at build time.
+[dependency-groups]
+build = [
+    "setuptools>=68",
+    "wheel",
+]
+
+[tool.uv]
+# Supply-chain guard: refuse any distribution artifact uploaded in the last
+# 7 days. Freshly published releases are the window in which compromised
+# maintainer accounts and typosquats are usually caught and yanked, so we
+# deliberately lag the bleeding edge instead of resolving to it.
+exclude-newer = "7 days"
+
+# Per-package overrides for the cooldown above. Use sparingly, and only for
+# packages we publish/control ourselves:
+#   some-internal-pkg = "0 days"
+[tool.uv.exclude-newer-package]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
