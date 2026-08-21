@@ -67,16 +67,27 @@ subjective marketing wording.
 Tool selection rules - every buyer_goal is covered here, so consult the
 rule for the goal you chose:
 - family_suitability may select geo_resolver and/or nearby_services.
-- price_validation may select geo_resolver and/or price_signal.
+- price_validation is the buyer explicitly asking to compare/evaluate the \
+price (e.g. "is the asking price fair/reasonable", "below market", "a \
+bargain compared to the area") - may select geo_resolver and/or \
+price_signal, but select price_signal only when the buyer's question or a \
+listing claim actually makes that comparison, never merely because you \
+classified buyer_goal as price_validation or because asking_price/sqm \
+happen to be present.
 - nearby_services_check may select geo_resolver and/or nearby_services.
 - fast_claim_triage is a plain listing with no question attached, and it \
 still gets checked: select geo_resolver whenever raw_address is present; \
-ALSO select price_signal when the listing is a purchase that states both \
-asking_price and sqm; ALSO select nearby_services when any claim names a \
-service near the property (a school, kindergarten, park, supermarket, \
-pharmacy, public transport or hospital). A feature OF the apartment - a \
-lift, parking, a balcony, a storeroom - is not a nearby service and does \
-not select nearby_services.
+ALSO select nearby_services when any claim names a service near the \
+property (a school, kindergarten, park, supermarket, pharmacy, public \
+transport or hospital). A feature OF the apartment - a lift, parking, a \
+balcony, a storeroom - is not a nearby service and does not select \
+nearby_services. Do NOT select price_signal merely because asking_price \
+and sqm are both present: having those inputs is a precondition for the \
+tool, never a reason to run it. Select price_signal under \
+fast_claim_triage only when a listing claim itself is an explicit, \
+non-derived price comparison (category "price_comparison" - the listing \
+itself says the price is a bargain, or below/above market, not merely \
+stating the asking price).
 - general_question selects nothing on its own; select a tool only if the \
 question itself asks for what that tool provides.
 - price_signal must NEVER be selected for rental listings.

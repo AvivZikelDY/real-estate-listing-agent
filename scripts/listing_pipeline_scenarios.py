@@ -522,13 +522,19 @@ SCENARIOS: dict[int, Scenario] = {
         question=None,
         expected_goal="fast_claim_triage",
         expected_categories=("rooms", "address", "size_sqm", "price", "nearby_amenities"),
-        # All three are *planned*. Live, geo_resolver returns
-        # outcome="ambiguous" (a street name with no house number matches
-        # several equally-scored records), which is status="ok" but yields
-        # no coordinates - so evidence_collector records the other two as
-        # status="skipped", never "error".
-        expected_tools=("geo_resolver", "nearby_services", "price_signal"),
-        forbidden_tools=(),
+        # geo_resolver and nearby_services are *planned*. Live, geo_resolver
+        # returns outcome="ambiguous" (a street name with no house number
+        # matches several equally-scored records), which is status="ok" but
+        # yields no coordinates - so evidence_collector records
+        # nearby_services as status="skipped", never "error". price_signal
+        # is never planned here: this is a plain listing fact ("מחיר
+        # 3,900,000 ש"ח" is category "price", not "price_comparison") with
+        # no comparative buyer question and no comparative listing claim -
+        # plan_validator's price-provenance guard (`_drop_unjustified_price_signal`)
+        # correctly drops it; asking_price+sqm alone is a precondition, not
+        # a reason, to run price_signal.
+        expected_tools=("geo_resolver", "nearby_services"),
+        forbidden_tools=("price_signal",),
         expected_answerability="partially_verifiable",
         plan=TriagePlan(
             property_details=PropertyDetails(
@@ -549,7 +555,6 @@ SCENARIOS: dict[int, Scenario] = {
             tool_calls=[
                 ToolCall(tool="geo_resolver", arguments={"address": "הרצל, תל אביב"}),
                 ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
-                ToolCall(tool="price_signal", arguments={}),
             ],
         ),
         invariants=(
@@ -664,8 +669,8 @@ SCENARIOS: dict[int, Scenario] = {
         question=None,
         expected_goal="fast_claim_triage",
         expected_categories=("rooms", "address", "size_sqm", "price", "nearby_amenities"),
-        expected_tools=("geo_resolver", "nearby_services", "price_signal"),
-        forbidden_tools=(),
+        expected_tools=("geo_resolver", "nearby_services"),
+        forbidden_tools=("price_signal",),
         expected_answerability="partially_verifiable",
         plan=TriagePlan(
             property_details=PropertyDetails(
@@ -692,12 +697,13 @@ SCENARIOS: dict[int, Scenario] = {
                 ToolCall(
                     tool="nearby_services", arguments={"categories": ["public_transport"]}
                 ),
-                ToolCall(tool="price_signal", arguments={}),
             ],
         ),
         invariants=(
             "a non-Tel-Aviv address still resolves and still gets nearby evidence",
             "thin or absent comparables surface as a typed price outcome, not an error",
+            "a plain listing-fact price with no comparative question/claim never "
+            "triggers price_signal (price-provenance guard)",
         ),
     ),
     15: Scenario(

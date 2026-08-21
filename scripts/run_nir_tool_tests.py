@@ -121,11 +121,11 @@ TEST_CASES: tuple[TestCase, ...] = (
             "an ambiguous address is a valid 'ok' answer with no coordinates, "
             "so dependent tools are SKIPPED rather than run on a guess"
         ),
-        expected_planned=("geo_resolver", "nearby_services", "price_signal"),
+        expected_planned=("geo_resolver", "nearby_services"),
+        expected_dropped=("price_signal",),
         live_expectations={
             "geo_resolver": ToolExpectation(status="ok", outcome="ambiguous"),
             "nearby_services": ToolExpectation(status="skipped"),
-            "price_signal": ToolExpectation(status="skipped"),
         },
     ),
     TestCase(
@@ -157,14 +157,15 @@ TEST_CASES: tuple[TestCase, ...] = (
     TestCase(
         scenario_id=14,
         what_it_proves=(
-            "an address outside Tel Aviv still resolves and still gets a price "
-            "signal, on a thinner set of comparable transactions"
+            "an address outside Tel Aviv still resolves and still gets nearby "
+            "evidence; a plain listing-fact price with no comparative question/"
+            "claim never triggers price_signal (price-provenance guard)"
         ),
-        expected_planned=("geo_resolver", "nearby_services", "price_signal"),
+        expected_planned=("geo_resolver", "nearby_services"),
+        expected_dropped=("price_signal",),
         live_expectations={
             "geo_resolver": ToolExpectation(status="ok", outcome="resolved"),
             "nearby_services": ToolExpectation(status="ok"),
-            "price_signal": ToolExpectation(status="ok", outcome="compared"),
         },
     ),
 )
