@@ -7,6 +7,8 @@ venv/
 .ruff_cache/
 *.egg-info/
 .DS_Store
+.idea/
+*.iml
 
 # Generated reports from scripts/run_nir_tool_tests.py - one file per run.
 src/listing_agent/tools/nir_implementations/test_results/
