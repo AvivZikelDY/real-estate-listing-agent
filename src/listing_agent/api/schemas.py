@@ -50,6 +50,21 @@ class ExecuteRequest(BaseModel):
         return stripped or None
 
 
+class ExecuteStep(BaseModel):
+    """A single public LLM-module step of a `POST /api/execute` run.
+
+    This is the API-boundary serialization of the internal `StepTrace`
+    (see `agent.step_tracer`) - only the LLM-module calls, in call order,
+    reduced to exactly these three fields. The richer internal tracer
+    (which also records tool/deterministic steps and secret-redaction)
+    is unchanged and stays internal.
+    """
+
+    module: str
+    prompt: dict[str, Any]
+    response: dict[str, Any]
+
+
 class ExecuteResponse(BaseModel):
     """Response body for `POST /api/execute`.
 
@@ -60,24 +75,22 @@ class ExecuteResponse(BaseModel):
     status: Literal["ok", "error"]
     error: str | None = None
     response: Any | None = None
-    steps: list[StepTrace] = Field(default_factory=list)
+    steps: list[ExecuteStep] = Field(default_factory=list)
 
 
-class TeamMember(BaseModel):
-    """A single team member entry in `/api/team_info`."""
+class Student(BaseModel):
+    """A single student entry in `/api/team_info`."""
 
     name: str
-    role: str
-    email: str | None = None
+    email: str
 
 
 class TeamInfoResponse(BaseModel):
     """Response body for `GET /api/team_info`."""
 
-    batch: str
-    order: str
+    group_batch_order_number: str
     team_name: str
-    members: list[TeamMember]
+    students: list[Student]
 
 
 class PromptExample(BaseModel):
@@ -85,13 +98,25 @@ class PromptExample(BaseModel):
 
     `full_response` and `steps` are produced by actually running the agent
     pipeline (offline, via `FakeLLMClient`) against a fixed, representative
-    prompt — so they always reflect the real shape `/api/execute` returns.
+    prompt. `steps` is reduced to the exact same public `ExecuteStep`
+    shape `/api/execute` returns, via the shared serializer - so it always
+    reflects the real, public shape, never the richer internal `StepTrace`.
     """
 
-    title: str
     prompt: str
     full_response: str
-    steps: list[StepTrace]
+    steps: list[ExecuteStep]
+
+
+class PromptTemplate(BaseModel):
+    """User-facing guidance on how to use the agent.
+
+    This is NOT the internal `triage_planner`/`report_writer` system
+    prompts - those remain internal implementation details and must never
+    be exposed here.
+    """
+
+    template: str
 
 
 class AgentInfoResponse(BaseModel):
@@ -101,5 +126,5 @@ class AgentInfoResponse(BaseModel):
     description: str
     version: str
     purpose: str
-    prompt_templates: dict[str, str]
+    prompt_template: PromptTemplate
     prompt_examples: list[PromptExample]

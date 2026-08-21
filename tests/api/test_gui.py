@@ -30,3 +30,15 @@ def test_static_style_css_is_served() -> None:
     response = client.get("/static/style.css")
 
     assert response.status_code == 200
+
+
+def test_static_app_js_renders_the_public_execute_step_shape() -> None:
+    """A3 compatibility: the GUI must read the new public step fields
+    (`module`/`prompt`/`response`), not the old `step`/`detail` shape."""
+    response = client.get("/static/app.js")
+
+    body = response.text
+    assert "step.module" in body
+    assert "step.prompt" in body
+    assert "step.response" in body
+    assert "step.detail" not in body

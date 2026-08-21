@@ -19,8 +19,9 @@ Returns static information about the team.
 Response (conceptual):
 ```
 {
+  "group_batch_order_number": string,   // e.g. "1_8"
   "team_name": string,
-  "members": [ { "name": string, "role": string } ]
+  "students": [ { "name": string, "email": string } ]
 }
 ```
 
@@ -86,7 +87,15 @@ of success or failure, whether or not `conversation_id` was supplied:
   "status": "ok" | "error",
   "error": string | null,
   "response": string | null,   // the final triage report when status == "ok"
-  "steps": [ StepTrace ]       // the LLM-module steps of this run, in order
+  "steps": [ ExecuteStep ]     // the LLM-module steps of this run, in order
+}
+```
+Each `ExecuteStep` contains **exactly**:
+```
+{
+  "module": string,            // e.g. "triage_planner", "report_writer"
+  "prompt": object,             // the recorded call input
+  "response": object            // the recorded call output, or {"error": "..."} on failure
 }
 ```
 
@@ -100,9 +109,15 @@ Rules:
   `deterministic`, or `context_reuse` steps. On a normal successful run
   this is always exactly two entries: `triage_planner` then
   `report_writer`, regardless of whether `conversation_id` was supplied.
-  `step_tracer` still records every tool/deterministic/context-reuse step
-  internally (for the Evidence Bundle and future debugging), but
-  `/api/execute` only ever surfaces the LLM steps.
+  The internal `step_tracer` still records the richer `StepTrace` shape
+  (`step`/`type`/`status`/`detail`) for every tool/deterministic/
+  context-reuse step, and for the Evidence Bundle/future debugging; a
+  small API-boundary serializer
+  (`src/listing_agent/api/execute_step_serializer.py`) reduces only the
+  `llm`-typed traces to the public `ExecuteStep` shape above. The internal
+  shape itself is never exposed publicly. `GET /api/agent_info`'s
+  `prompt_examples[].steps` uses this exact same `ExecuteStep` shape and
+  the exact same serializer function - never a re-implemented mapping.
 
 ### `GET /`
 

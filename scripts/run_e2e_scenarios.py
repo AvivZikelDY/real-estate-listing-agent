@@ -286,13 +286,16 @@ def _display(text: str, rtl: bool) -> str:
 
 def _step(response: dict, name: str) -> dict:
     for step in response.get("steps") or []:
-        if step.get("step") == name:
+        if step.get("module") == name:
             return step
     return {}
 
 
 def _planner_output(response: dict) -> dict:
-    return (_step(response, "triage_planner").get("detail") or {}).get("response") or {}
+    # A3 compatibility: `/api/execute` now serializes steps to the public
+    # {module, prompt, response} shape (the old `detail.response` nesting
+    # is gone). Full scenario modernization is deferred to B3a.
+    return _step(response, "triage_planner").get("response") or {}
 
 
 def _bundle(response: dict) -> dict:
@@ -301,8 +304,10 @@ def _bundle(response: dict) -> dict:
     It is the only place the post-validation plan and every tool result are
     visible together, which is exactly what this file needs to record.
     """
-    detail = _step(response, "report_writer").get("detail") or {}
-    return (detail.get("prompt") or {}).get("user_payload") or {}
+    # A3 compatibility: read the public `prompt.user_payload` directly
+    # instead of the old `detail.prompt.user_payload` nesting.
+    prompt = _step(response, "report_writer").get("prompt") or {}
+    return prompt.get("user_payload") or {}
 
 
 def _tool_result(bundle: dict, tool: str) -> dict | None:

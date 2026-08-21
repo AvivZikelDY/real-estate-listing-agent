@@ -19,21 +19,19 @@ from src.listing_agent.agent.request_limits import RequestLimitError
 from src.listing_agent.agent.step_tracer import StepTracer
 from src.listing_agent.agent.tool_executor import ToolExecutor, get_tool_executor
 from src.listing_agent.api.agent_info_examples import build_prompt_examples
+from src.listing_agent.api.execute_step_serializer import build_public_steps
 from src.listing_agent.api.schemas import (
     AgentInfoResponse,
     ExecuteRequest,
     ExecuteResponse,
-    StepTrace,
+    ExecuteStep,
+    PromptTemplate,
+    Student,
     TeamInfoResponse,
-    TeamMember,
 )
 from src.listing_agent.config import Settings, get_settings
 from src.listing_agent.llm.client.base import LLMClient
 from src.listing_agent.llm.client.dependency import get_llm_client
-from src.listing_agent.llm.report_writer import REPORT_WRITER_SYSTEM_PROMPT
-from src.listing_agent.llm.report_writer.writer import MODULE_NAME as REPORT_WRITER_MODULE
-from src.listing_agent.llm.triage_planner import TRIAGE_PLANNER_SYSTEM_PROMPT
-from src.listing_agent.llm.triage_planner.planner import MODULE_NAME as TRIAGE_PLANNER_MODULE
 
 ARCHITECTURE_IMAGE_PATH = (
     Path(__file__).resolve().parent.parent / "static" / "model_architecture.png"
@@ -44,35 +42,21 @@ router = APIRouter(prefix="/api")
 
 @router.get("/team_info", response_model=TeamInfoResponse)
 def team_info() -> TeamInfoResponse:
-    """Static team information.
-
-    Placeholders are intentionally left unresolved until the real team
-    details are filled in.
-    """
+    """Static team information."""
     return TeamInfoResponse(
-        batch="{BATCH}",
-        order="{ORDER}",
-        team_name="{TEAM_NAME}",
-        members=[
-            TeamMember(
-                name="Aviv",
-                role="Application, agent, API, GUI, tests & deployment owner",
-                email="{AVIV_EMAIL}",
-            ),
-            TeamMember(
-                name="{NIR_FULL_NAME}",
-                role="Tool implementations & data sources owner",
-                email="{NIR_EMAIL}",
-            ),
+        group_batch_order_number="1_8",
+        team_name="Group H",
+        students=[
+            Student(name="Aviv Zikel", email="zikel3011@gmail.com"),
+            Student(name="Nir Kaplan", email="kaplanir24@gmail.com"),
         ],
     )
 
 
 @router.get("/agent_info", response_model=AgentInfoResponse)
 async def agent_info() -> AgentInfoResponse:
-    """Agent information: description, purpose, frozen prompt templates, and
-
-    Full end-to-end illustrative examples (real pipeline output via an
+    """Agent information: description, purpose, user-facing usage guidance,
+    and full end-to-end illustrative examples (real pipeline output via an
     offline `FakeLLMClient` fixture, never hand-typed/hardcoded response
     text) covering family suitability and price validation with missing
     information.
@@ -93,10 +77,16 @@ async def agent_info() -> AgentInfoResponse:
             "supported claims from unclear ones, never performs a professional "
             "appraisal or gives legal advice, and always states what is missing."
         ),
-        prompt_templates={
-            TRIAGE_PLANNER_MODULE: TRIAGE_PLANNER_SYSTEM_PROMPT,
-            REPORT_WRITER_MODULE: REPORT_WRITER_SYSTEM_PROMPT,
-        },
+        prompt_template=PromptTemplate(
+            template=(
+                "Paste a Tel Aviv real estate listing (the seller's or agent's "
+                "description, including price, size and any claims made). "
+                "Optionally add a buyer question or goal, such as whether the "
+                "property suits a family or whether the asking price seems "
+                "reasonable. The agent will triage the listing's claims and "
+                "gather evidence where applicable, then return a grounded report."
+            )
+        ),
         prompt_examples=await build_prompt_examples(),
     )
 
@@ -155,14 +145,16 @@ def _get_context_store_dependency() -> InMemoryContextStore:
     return get_context_store()
 
 
-def _llm_steps(tracer: StepTracer) -> list[StepTrace]:
-    """Only the LLM-module steps are surfaced in the public `/api/execute` response.
+def _public_steps(tracer: StepTracer) -> list[ExecuteStep]:
+    """Serialize the tracer's recorded steps into the public `ExecuteStep` shape.
 
-    `step_tracer` also records `tool` and `deterministic` steps internally
-    (used to build the Evidence Bundle), but a normal successful run must
-    report exactly two steps here: `triage_planner`, then `report_writer`.
+    Only the LLM-module calls are surfaced here, in call order, each
+    reduced to exactly `{module, prompt, response}` by
+    `execute_step_serializer.build_public_steps`. The richer internal
+    tracer (which also records `tool` and `deterministic` steps, used to
+    build the Evidence Bundle) is untouched.
     """
-    return [step for step in tracer.get_steps() if step.type == "llm"]
+    return build_public_steps(tracer.get_steps())
 
 
 @router.post("/execute", response_model=ExecuteResponse)
@@ -190,11 +182,11 @@ async def execute(
         )
     except RequestLimitError as exc:
         return ExecuteResponse(
-            status="error", error=exc.message, response=None, steps=_llm_steps(tracer)
+            status="error", error=exc.message, response=None, steps=_public_steps(tracer)
         )
     except PlanValidationError as exc:
         return ExecuteResponse(
-            status="error", error=str(exc), response=None, steps=_llm_steps(tracer)
+            status="error", error=str(exc), response=None, steps=_public_steps(tracer)
         )
     except TimeoutError:
         return ExecuteResponse(
@@ -204,16 +196,16 @@ async def execute(
                 f"{settings.llm_request_timeout_seconds:.0f} seconds."
             ),
             response=None,
-            steps=_llm_steps(tracer),
+            steps=_public_steps(tracer),
         )
     except Exception as exc:  # last-resort: keep the four-field contract intact
         return ExecuteResponse(
             status="error",
             error=f"Agent execution failed: {exc}",
             response=None,
-            steps=_llm_steps(tracer),
+            steps=_public_steps(tracer),
         )
 
     return ExecuteResponse(
-        status="ok", error=None, response=result.report, steps=_llm_steps(tracer)
+        status="ok", error=None, response=result.report, steps=_public_steps(tracer)
     )

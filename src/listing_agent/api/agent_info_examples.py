@@ -3,13 +3,17 @@
 Each example is produced by actually running `agent_orchestrator` (via an
 offline, deterministic `FakeLLMClient` fixture) so `full_response` and
 `steps` always reflect the real shape the pipeline produces — never
-hand-typed prose that could drift from the real behavior.
+hand-typed prose that could drift from the real behavior. `steps` is
+reduced to the exact same public `ExecuteStep` shape as `POST /api/execute`
+via the shared `execute_step_serializer.build_public_steps` - the same
+serializer, not a re-implementation.
 """
 
 from src.listing_agent.agent.orchestrator import run_agent_pipeline
 from src.listing_agent.agent.schemas import Claim, PropertyDetails, ToolCall, TriagePlan
 from src.listing_agent.agent.step_tracer import StepTracer
 from src.listing_agent.agent.tool_executor import LocalToolExecutor
+from src.listing_agent.api.execute_step_serializer import build_public_steps
 from src.listing_agent.api.schemas import PromptExample
 from src.listing_agent.config import Settings
 from src.listing_agent.llm.client.fake import FakeLLMClient
@@ -68,7 +72,7 @@ or street?
 
 
 async def _run_example(
-    title: str, prompt: str, plan: TriagePlan, report: str
+    prompt: str, plan: TriagePlan, report: str
 ) -> PromptExample:
     client = FakeLLMClient()
     client.set_response(TRIAGE_PLANNER_MODULE, plan)
@@ -81,10 +85,9 @@ async def _run_example(
     )
 
     return PromptExample(
-        title=title,
         prompt=prompt,
         full_response=result.report,
-        steps=tracer.get_steps(),
+        steps=build_public_steps(tracer.get_steps()),
     )
 
 
@@ -127,13 +130,11 @@ async def build_prompt_examples() -> list[PromptExample]:
 
     return [
         await _run_example(
-            "Family suitability",
             _FAMILY_SUITABILITY_PROMPT,
             family_plan,
             _FAMILY_SUITABILITY_REPORT,
         ),
         await _run_example(
-            "Price validation with missing information",
             _PRICE_VALIDATION_MISSING_INFO_PROMPT,
             price_missing_sqm_plan,
             _PRICE_VALIDATION_MISSING_INFO_REPORT,

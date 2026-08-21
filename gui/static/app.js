@@ -90,18 +90,15 @@ function renderSteps(steps) {
     item.className = "step-item";
 
     const heading = document.createElement("h3");
-    heading.textContent = `${step.step} (${step.status})`;
+    heading.textContent = step.module;
     item.appendChild(heading);
-
-    const detail = step.detail || {};
-    const promptDetail = detail.prompt || {};
 
     const promptLabel = document.createElement("strong");
     promptLabel.textContent = "Prompt:";
     item.appendChild(promptLabel);
 
     const promptPre = document.createElement("pre");
-    promptPre.textContent = JSON.stringify(promptDetail, null, 2);
+    promptPre.textContent = JSON.stringify(step.prompt || {}, null, 2);
     item.appendChild(promptPre);
 
     const responseLabel = document.createElement("strong");
@@ -109,11 +106,7 @@ function renderSteps(steps) {
     item.appendChild(responseLabel);
 
     const responsePre = document.createElement("pre");
-    responsePre.textContent = JSON.stringify(
-      "response" in detail ? detail.response : (detail.error ?? null),
-      null,
-      2
-    );
+    responsePre.textContent = JSON.stringify(step.response || {}, null, 2);
     item.appendChild(responsePre);
 
     stepsList.appendChild(item);

@@ -78,8 +78,20 @@ def test_execute_steps_use_the_exact_frozen_module_names() -> None:
     response = client.post("/api/execute", json={"prompt": "Is this good for a family?"})
 
     steps = response.json()["steps"]
-    assert [step["step"] for step in steps] == ["triage_planner", "report_writer"]
-    assert all(step["type"] == "llm" for step in steps)
+    assert [step["module"] for step in steps] == ["triage_planner", "report_writer"]
+
+
+def test_execute_public_steps_have_exactly_module_prompt_response() -> None:
+    _override_dependencies(_family_plan())
+
+    response = client.post("/api/execute", json={"prompt": "Is this good for a family?"})
+
+    steps = response.json()["steps"]
+    assert len(steps) > 0
+    for step in steps:
+        assert set(step.keys()) == {"module", "prompt", "response"}
+        assert isinstance(step["prompt"], dict)
+        assert isinstance(step["response"], dict)
 
 
 def test_execute_final_report_matches_the_report_writer_output_verbatim() -> None:
@@ -93,8 +105,8 @@ def test_execute_final_report_matches_the_report_writer_output_verbatim() -> Non
     assert body["response"] == "Grounded report using only evidence bundle facts."
     # The report_writer step's recorded prompt shows exactly what evidence it
     # was grounded in - nothing beyond the Evidence Bundle was available to it.
-    report_step = next(step for step in body["steps"] if step["step"] == "report_writer")
-    payload = report_step["detail"]["prompt"]["user_payload"]
+    report_step = next(step for step in body["steps"] if step["module"] == "report_writer")
+    payload = report_step["prompt"]["user_payload"]
     assert set(payload) == {
         "prompt",
         "property_details",
@@ -114,8 +126,8 @@ def test_execute_tool_failure_is_surfaced_as_a_limitation() -> None:
 
     body = response.json()
     assert body["status"] == "ok"
-    report_step = next(step for step in body["steps"] if step["step"] == "report_writer")
-    limitations = report_step["detail"]["prompt"]["user_payload"]["limitations"]
+    report_step = next(step for step in body["steps"] if step["module"] == "report_writer")
+    limitations = report_step["prompt"]["user_payload"]["limitations"]
     assert any("nearby_services skipped" in item for item in limitations)
 
 
@@ -158,8 +170,8 @@ def test_execute_rental_request_never_runs_price_signal() -> None:
 
     body = response.json()
     assert body["status"] == "ok"
-    report_step = next(step for step in body["steps"] if step["step"] == "report_writer")
-    payload = report_step["detail"]["prompt"]["user_payload"]
+    report_step = next(step for step in body["steps"] if step["module"] == "report_writer")
+    payload = report_step["prompt"]["user_payload"]
     assert "price_signal" not in payload["executed_tools"]
     assert all(result["tool"] != "price_signal" for result in payload["tool_results"])
 
@@ -183,8 +195,8 @@ def test_execute_missing_sqm_surfaces_a_clarification_signal() -> None:
 
     body = response.json()
     assert body["status"] == "ok"
-    report_step = next(step for step in body["steps"] if step["step"] == "report_writer")
-    payload = report_step["detail"]["prompt"]["user_payload"]
+    report_step = next(step for step in body["steps"] if step["module"] == "report_writer")
+    payload = report_step["prompt"]["user_payload"]
     assert "sqm" in payload["missing_information"]
     assert "price_signal" not in payload["executed_tools"]
 

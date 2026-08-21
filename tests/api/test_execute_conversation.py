@@ -116,7 +116,7 @@ def test_second_turn_with_same_conversation_id_reuses_and_reduces_tool_calls() -
     assert second.json()["status"] == "ok"
     # The public response shape/steps are unaffected by reuse - still just
     # the two frozen LLM steps.
-    assert [step["step"] for step in second.json()["steps"]] == [
+    assert [step["module"] for step in second.json()["steps"]] == [
         "triage_planner",
         "report_writer",
     ]
