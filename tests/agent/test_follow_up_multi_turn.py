@@ -494,3 +494,113 @@ async def test_scenario_7_technical_failure_is_not_cached_but_empty_result_is() 
         geo_seed=geo_seed,
     )
     assert len(context.cached_nearby) == 1
+
+
+async def test_scenario_8_no_recognised_city_skips_geo_gracefully_and_leaves_cache_untouched() -> (
+    None
+):
+    """Phase 2 (D.1): an address naming no city this agent recognises
+    (Nir's no-city refusal, `tool_input_builder.MissingDependencyError`)
+    must never crash a stateful turn. The run still completes with
+    `geo_resolver` as an honest `status="skipped"` evidence entry (never
+    an uncaught exception, never `status="error"`), and nothing is
+    written to the conversation's geo/nearby caches for this turn."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="גונן 14",  # names no recognised city
+            asking_price=4_350_000,
+            rooms=5,
+            sqm=123,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    store = InMemoryContextStore()
+    tracer = StepTracer()
+
+    result = await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(plan),
+        tool_executor=_executor(),
+        tracer=tracer,
+        conversation_id="conv-no-city",
+        context_store=store,
+    )
+
+    assert result.bundle.executed_tools == []
+    geo_evidence = next(t for t in result.bundle.tool_results if t.tool == "geo_resolver")
+    assert geo_evidence.status == "skipped"
+    assert geo_evidence.reason is not None
+
+    stored = store.get("conv-no-city")
+    assert stored is not None
+    assert stored.resolved_geo is None
+    assert stored.cached_geo == {}
+    assert stored.cached_nearby == {}
+
+
+async def test_scenario_9_valid_address_turn_after_a_no_city_turn_still_caches_normally() -> None:
+    """A later turn in the same conversation with a resolvable address
+    must still resolve and cache geo/nearby normally - the no-city turn
+    leaves no residue that could block a subsequent successful turn."""
+    store = InMemoryContextStore()
+
+    no_city_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="גונן 14",
+            asking_price=4_350_000,
+            rooms=5,
+            sqm=123,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    first = await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(no_city_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-recovers",
+        context_store=store,
+    )
+    assert first.bundle.executed_tools == []
+
+    valid_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address=KNOWN_ADDRESS,
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=90,
+        ),
+        buyer_goal="nearby_services_check",
+        claims=[Claim(text="יש פארק קרוב?", type="factual", category="nearby_amenities")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+        ],
+    )
+    second = await run_agent_pipeline(
+        "יש פארק קרוב?",
+        llm_client=_client(valid_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-recovers",
+        context_store=store,
+    )
+
+    assert set(second.bundle.executed_tools) == {"geo_resolver", "nearby_services"}
+    stored = store.get("conv-recovers")
+    assert stored is not None
+    assert stored.resolved_geo is not None
+    assert any(key.startswith("nearby_services:park:") for key in stored.cached_nearby)

@@ -38,6 +38,7 @@ from src.listing_agent.agent.tool_executor import ToolExecutor
 from src.listing_agent.agent.tool_executor.result import ToolExecutionResult
 from src.listing_agent.agent.tool_input_builder import MissingDependencyError, build_tool_input
 from src.listing_agent.tools.schemas import (
+    GeoResolverInput,
     GeoResolverOutput,
     NearbyPlace,
     NearbyServicesInput,
@@ -125,17 +126,28 @@ async def collect_evidence_with_context(
 
     # --- geo_resolver -----------------------------------------------------
     if geo_call is not None:
-        geo_input = build_tool_input(geo_call, plan.property_details, None, plan.claims)
-        cached_geo = context.cached_geo.get(geo_cache_key(geo_input))
-        if cached_geo is not None:
-            geo_seed = cached_geo
-            reused_evidence["geo_resolver"] = map_tool_evidence(
-                geo_call,
-                ToolExecutionResult(status="ok", output=cached_geo),
-                plan.claims,
-            )
-            reused_keys.append("geo_resolver")
+        geo_input = _try_build(geo_call, plan, None, GeoResolverInput)
+        if geo_input is not None:
+            cached_geo = context.cached_geo.get(geo_cache_key(geo_input))
+            if cached_geo is not None:
+                geo_seed = cached_geo
+                reused_evidence["geo_resolver"] = map_tool_evidence(
+                    geo_call,
+                    ToolExecutionResult(status="ok", output=cached_geo),
+                    plan.claims,
+                )
+                reused_keys.append("geo_resolver")
+            else:
+                reduced_calls.append(geo_call)
         else:
+            # `build_tool_input` cannot even be attempted for a cache
+            # lookup - most commonly the address names no city this agent
+            # recognises (`MissingDependencyError`, Nir's no-city refusal).
+            # No cache key can be computed, so there is nothing to reuse:
+            # let the normal `collect_evidence` path run `geo_call` itself,
+            # which raises/catches the same `MissingDependencyError` and
+            # records the honest "skipped" evidence entry - never an
+            # uncaught exception, never a cached failure.
             reduced_calls.append(geo_call)
 
     # --- nearby_services (only reducible once geo is already known) ------
@@ -295,10 +307,19 @@ def _store_new_results(
         is_resolved = evidence.output.get("outcome") == "resolved" if evidence.output else False
         if evidence.status == "ok" and is_resolved:
             resolved = GeoResolverOutput.model_validate(evidence.output)
-            geo_input = build_tool_input(geo_call, plan.property_details, None, plan.claims)
-            context.cached_geo[geo_cache_key(geo_input)] = resolved
-            context.resolved_geo = resolved
             geo_seed = resolved
+            # In practice `build_tool_input` cannot raise here: it already
+            # succeeded once, deterministically (same `property_details`,
+            # no side effects), for `collect_evidence` to have actually run
+            # `geo_call` and produced this `"resolved"` evidence in the
+            # first place. Guarded anyway, defensively: a `geo_seed` from a
+            # genuine success must never be lost even if a future change
+            # makes this re-build fail - only *caching* it for next-turn
+            # reuse is skipped when the cache key can't be computed.
+            geo_input = _try_build(geo_call, plan, None, GeoResolverInput)
+            if geo_input is not None:
+                context.cached_geo[geo_cache_key(geo_input)] = resolved
+                context.resolved_geo = resolved
 
     nearby_ready = (
         executed_nearby_call is not None

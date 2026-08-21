@@ -283,9 +283,11 @@ def _prepared_input_for_call(
     claims: list[Claim] | None = None,
 ) -> dict[str, Any]:
     """The exact typed payload `call.tool` would be executed with next, or
-    an explicit unresolved-dependency placeholder if it depends on
-    `geo_resolver`'s output, which this script never produces (it never
-    runs any tool)."""
+    an explicit unresolved-dependency placeholder if it cannot be built yet:
+    either it depends on `geo_resolver`'s output, which this script never
+    produces (it never runs any tool), or - for `geo_resolver` itself - the
+    address names no city this agent recognises (`_NO_CITY_HINT_REASON`),
+    which is refused before any tool ever runs."""
     try:
         input_model = build_tool_input(call, property_details, geo_output=None, claims=claims)
     except MissingDependencyError as exc:
@@ -300,6 +302,16 @@ def _prepared_input_for_call(
                 "lon": {"from_call": geo_call_id, "field": "lon"},
                 "categories": requested_categories or _NEARBY_SERVICES_DEFAULT_CATEGORIES,
                 "radius_m": _NEARBY_SERVICES_DEFAULT_RADIUS_M,
+            }
+        elif call.tool == "geo_resolver":
+            # Not a downstream dependency on another call - geo_resolver's
+            # own input is unbuildable because the address itself names no
+            # recognised city. There is no `from_call` to point at, so the
+            # placeholder mirrors GeoResolverInput's own fields directly:
+            # the address is known, the missing piece is the city hint.
+            template = {
+                "address": property_details.raw_address,
+                "city_hint": None,
             }
         else:  # price_signal
             template = {

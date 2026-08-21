@@ -20,7 +20,7 @@ import pytest
 import scripts.pre_tool_triage as script
 from src.listing_agent.agent.evidence_mapper import find_relevant_claim_ids
 from src.listing_agent.agent.plan_validator import validate_plan
-from src.listing_agent.agent.tool_input_builder import build_tool_input
+from src.listing_agent.agent.tool_input_builder import MissingDependencyError, build_tool_input
 from tests.agent.test_claim_retention_regression import _gonen_14_plan
 
 
@@ -98,19 +98,31 @@ def test_supports_claim_ids_match_find_relevant_claim_ids() -> None:
 # --- 5: prepared tool input uses production build_tool_input() -------------
 
 
-def test_prepared_geo_input_equals_direct_build_tool_input() -> None:
+def test_prepared_geo_input_reports_the_same_unresolved_dependency_as_build_tool_input() -> None:
+    """The Gonen 14 fixture's address ("גונן 14") names no city this agent
+    recognises (`tool_input_builder._NO_CITY_HINT_REASON`), so
+    `build_tool_input` itself refuses to build a `geo_resolver` input for
+    it - the diagnostic must report exactly that unresolved dependency,
+    never crash, and never mislabel it as some other tool's placeholder."""
     raw = _gonen_14_plan()
     validated = validate_plan(raw)
     report = script.build_pre_tool_triage_report(raw, validated)
 
     geo_call = next(c for c in validated.tool_calls if c.tool == "geo_resolver")
-    expected = build_tool_input(
-        geo_call, validated.property_details, geo_output=None, claims=validated.claims
-    ).model_dump(mode="json")
+    with pytest.raises(MissingDependencyError) as excinfo:
+        build_tool_input(
+            geo_call, validated.property_details, geo_output=None, claims=validated.claims
+        )
 
     prepared = next(e for e in report["prepared_tool_inputs"] if e["tool_name"] == "geo_resolver")
-    assert prepared["resolved"] is True
-    assert prepared["value"] == expected
+    assert prepared["resolved"] is False
+    assert prepared["unresolved_dependency_reason"] == excinfo.value.reason
+    # The placeholder mirrors GeoResolverInput's own fields - never the
+    # price_signal-shaped template a mislabeled fallback would produce.
+    assert prepared["value"] == {
+        "address": validated.property_details.raw_address,
+        "city_hint": None,
+    }
 
 
 # --- 6: daycare normalization is preserved --------------------------------
