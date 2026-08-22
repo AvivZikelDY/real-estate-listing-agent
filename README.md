@@ -264,6 +264,14 @@ intentional final acceptance pass.
 See `docs/contracts.md` §7 for the complete list of known, intentional,
 non-blocking limitations.
 
+## Evaluation and demo
+
+- [Evaluation & Demo Guide](docs/evaluation_guide.md) — supported question
+  types, a recommended multi-turn demo, and what good agent behavior looks
+  like.
+- [Final Evaluation Results](docs/final_evaluation.md) — the acceptance
+  scenario table and findings discovered/fixed before submission.
+
 ## Dependency security
 
 Dependencies are locked and installed under four supply-chain guards.
