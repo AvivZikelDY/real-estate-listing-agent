@@ -204,10 +204,12 @@ def test_max_tool_calls_is_configurable() -> None:
 def test_known_nearby_amenities_claim_survives_when_planner_omits_the_call() -> None:
     """The planner correctly classified a claim as `nearby_amenities` but
     never proposed the matching `ToolCall` at all - it must not silently go
-    unchecked."""
+    unchecked. This is the default/full-listing (`fast_claim_triage`)
+    scenario Phase 19 synthesis exists for."""
     plan = _plan()
     plan = plan.model_copy(
         update={
+            "buyer_goal": "fast_claim_triage",
             "claims": [
                 Claim(
                     text="קרובה לבתי ספר, גנים ופארקים", type="factual", category="nearby_amenities"
@@ -317,7 +319,8 @@ def test_nearby_services_synthesis_does_not_fire_for_price_validation_goal() -> 
 def test_nearby_services_synthesis_still_fires_for_family_suitability_goal() -> None:
     """Guards against over-fixing: a narrowed `"family_suitability"` goal is
     exactly the case where a known `nearby_amenities` claim the planner
-    omitted must still be repaired - only `"price_validation"` is excluded."""
+    omitted must still be repaired - only `"price_validation"` and
+    `"general_question"` are excluded (Stage 1.6 / Stage 4.4)."""
     plan = _plan()
     plan = plan.model_copy(
         update={
@@ -332,6 +335,51 @@ def test_nearby_services_synthesis_still_fires_for_family_suitability_goal() -> 
     validated = validate_plan(plan)
 
     assert any(call.tool == "nearby_services" for call in validated.tool_calls)
+
+
+def test_nearby_services_synthesis_still_fires_for_fast_claim_triage_goal() -> None:
+    """Guards against over-fixing: a plain listing with no buyer question
+    (`"fast_claim_triage"`) is the original Phase 19 use case this synthesis
+    exists for - a retained `nearby_amenities` claim the planner omitted a
+    tool call for must still be repaired."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(text="קרובה לפארק", type="factual", category="nearby_amenities"),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert any(call.tool == "nearby_services" for call in validated.tool_calls)
+
+
+def test_nearby_services_synthesis_does_not_fire_for_general_question_goal() -> None:
+    """Stage 4.3/4.4 regression (real "האם מתאימה לסטודנטים?" scenario):
+    when the buyer's explicit goal this turn is `"general_question"` and the
+    planner itself proposed no tools (`tool_calls=[]`), a merely-retained,
+    unrelated `nearby_amenities` listing claim (e.g. "מול פארק ירוק ופתוח")
+    must NOT cause `nearby_services`/`geo_resolver` to be synthesized behind
+    the planner's back - `general_question` selects a tool only when the
+    current question itself asks for what that tool provides."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "general_question",
+            "claims": [
+                Claim(text="מול פארק ירוק ופתוח", type="factual", category="nearby_amenities"),
+            ],
+            "tool_calls": [],
+        }
+    )
+
+    validated = validate_plan(plan, buyer_prompt="האם מתאימה לסטודנטים?")
+
+    assert validated.tool_calls == []
 
 
 # --- Phase 19: deriving a price_comparison claim/linkage (Deviation 2) ------

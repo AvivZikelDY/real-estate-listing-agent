@@ -208,7 +208,7 @@ def test_scenario_a_late_park_claim_survives_marketing_prose() -> None:
         property_details=PropertyDetails(
             listing_type="purchase", raw_address="דיזנגוף 50, תל אביב", rooms=3, sqm=70
         ),
-        buyer_goal="general_question",
+        buyer_goal="fast_claim_triage",
         claims=claims,
         tool_calls=[],
     )

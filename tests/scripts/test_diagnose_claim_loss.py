@@ -27,7 +27,7 @@ RAW_LLM_JSON = json.dumps(
             "rooms": 5,
             "sqm": 123,
         },
-        "buyer_goal": "general_question",
+        "buyer_goal": "fast_claim_triage",
         "claims": [
             {"text": "גונן 14", "type": "factual", "category": "address"},
             {"text": "5 חדרים", "type": "factual", "category": "rooms"},

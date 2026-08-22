@@ -347,3 +347,54 @@ def test_system_prompt_forbids_internal_evidence_bundle_terminology() -> None:
     assert '"Evidence Bundle", "bundle", "בנדל"' in prompt
     assert "Tool names themselves (geo_resolver, nearby_services, price_signal) may" in prompt
 
+
+# --- Stage 4.4: internal truncation markers stripped before report_writer --
+
+
+def test_compact_bundle_strips_raw_truncation_marker_and_detail() -> None:
+    """Stage 4.3 live finding: the raw internal diagnostic marker
+    "additional_claims_truncated" (and its "..._detail: ..." companion) must
+    never reach the compact payload handed to report_writer - prompt-only
+    protection already proved insufficient (the deployed LLM quoted it
+    verbatim into a buyer-facing report). They are replaced with a single
+    plain-language item instead of being silently dropped."""
+    bundle = _bundle(
+        missing_information=[
+            "additional_claims_truncated",
+            "additional_claims_truncated_detail: produced=13 deduplicated=13 "
+            "retained=8 removed=5 removed_categories=['uncategorized']",
+        ]
+    )
+
+    payload = build_compact_evidence_bundle(bundle)
+
+    for item in payload["missing_information"]:
+        assert item != "additional_claims_truncated"
+        assert not item.startswith("additional_claims_truncated_detail:")
+    assert (
+        "some additional details in the listing were not included in this check"
+        in payload["missing_information"]
+    )
+
+
+def test_compact_bundle_preserves_real_missing_information_fields() -> None:
+    """Real user-facing missing fields (e.g. "sqm", "raw_address") must
+    survive into the compact bundle unchanged - only the internal truncation
+    markers are stripped."""
+    bundle = _bundle(missing_information=["sqm", "raw_address"])
+
+    payload = build_compact_evidence_bundle(bundle)
+
+    assert payload["missing_information"] == ["sqm", "raw_address"]
+
+
+def test_compact_bundle_no_marker_means_no_plain_language_substitute_added() -> None:
+    """When no truncation marker was ever recorded, nothing is added -
+    the sanitizer must not invent a "details were trimmed" note out of
+    nowhere."""
+    bundle = _bundle(missing_information=["sqm"])
+
+    payload = build_compact_evidence_bundle(bundle)
+
+    assert payload["missing_information"] == ["sqm"]
+
