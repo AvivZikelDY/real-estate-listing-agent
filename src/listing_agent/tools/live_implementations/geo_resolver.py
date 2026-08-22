@@ -27,7 +27,7 @@ file to answer. `geo_resolver` in particular could never have used one:
 It is also cheap: the common path is a single HTTP call (~0.3s) against
 the 8s `LocalToolExecutor` ceiling.
 
-THE RESULT CONTRACT (docs/nir_handoff.md)
+THE RESULT CONTRACT (docs/tools.md)
 -----------------------------------------
 `ToolResult.status` says whether the *tool* worked; `outcome` says what it
 *found*. "We looked and this address is not real" is a successful run.

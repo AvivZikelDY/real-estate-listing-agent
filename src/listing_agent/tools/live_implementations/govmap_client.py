@@ -9,7 +9,7 @@ through MCP, because MCP exists so that an *LLM* can discover tools at
 runtime; our caller is deterministic Python that already knows exactly
 which endpoint it wants, so the protocol layer would add a handshake and a
 tool-listing round trip for no benefit. Tools here are deterministic
-data/logic only (`docs/nir_handoff.md:224`).
+data/logic only (`docs/tools.md:230`).
 
 No authentication, no API key. Base URL `https://www.govmap.gov.il/api`.
 
@@ -56,7 +56,7 @@ from src.listing_agent.tools.live_implementations.coordinates import parse_wkt_p
 # from that package runs its `__init__.py`, which imports
 # `tools.dependency`, which imports this very package — a circular import
 # that fails at startup. Deferring the import to call time breaks the cycle
-# while keeping the error taxonomy that `docs/nir_handoff.md:73-86`
+# while keeping the error taxonomy that `docs/tools.md:66-93`
 # explicitly invites tools to use.
 
 logger = logging.getLogger(__name__)

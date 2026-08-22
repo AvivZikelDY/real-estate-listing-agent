@@ -3,7 +3,7 @@
 One input example, one successful-outcome example, and one
 incomplete/no-result example for each of the three tools. All shapes are
 frozen in `src/listing_agent/tools/schemas.py` — see `docs/contracts.md`
-§4 and `docs/nir_handoff.md` for the full field-by-field contract.
+§4 and `docs/tools.md` for the full field-by-field contract.
 
 Reminder: `status="ok"` covers **both** "we found a good answer" and "we
 honestly found no usable answer" — the specific business result lives in

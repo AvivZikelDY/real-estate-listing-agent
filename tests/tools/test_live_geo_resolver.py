@@ -1,6 +1,6 @@
 """Tests for `LiveGeoResolver` — the govmap-backed real implementation.
 
-Covers requirements 1-3, 10 and 11 of `docs/nir_handoff.md`.
+Covers requirements 1-3, 10 and 11 of `docs/tools.md`.
 
 Every test injects a stub client, so nothing here touches the network. The
 stub responses are real captured govmap payloads (note the Web Mercator

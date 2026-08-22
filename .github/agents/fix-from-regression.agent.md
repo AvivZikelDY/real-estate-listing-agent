@@ -18,7 +18,7 @@ Do not diagnose the failure from scratch unless the supplied diagnosis is
 inconsistent with the current repository state.
 
 Do not implement MCP.
-Do not implement Nir's real tools.
+Do not implement live tool logic.
 Do not add another production LLM call.
 Do not change public API contracts.
 Do not modify expected fixtures merely to match unstable real-LLM wording.
@@ -376,7 +376,8 @@ It must include:
 * missing information;
 * suggested buyer follow-up questions.
 
-This output is the acceptance surface while Nir's real tools are unavailable.
+This output is the acceptance surface for testing the pipeline without
+invoking the live tool implementations.
 
 ---
 
@@ -447,4 +448,4 @@ REGRESSION_NOT_FIXED
 
 Stop after completing this fix.
 
-Do not proceed to Nir integration automatically.
+Do not proceed to MCP integration automatically.

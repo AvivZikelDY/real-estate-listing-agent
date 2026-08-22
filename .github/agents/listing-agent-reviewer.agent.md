@@ -46,7 +46,7 @@ Focus on:
     * `.github/copilot-instructions.md`
     * `docs/evaluation.md`
     * `docs/contracts.md`
-    * `docs/nir_handoff.md`
+    * `docs/tools.md`
     * the current task or acceptance document.
 
 2. Inspect:
@@ -181,7 +181,7 @@ Explain whether the changes could affect:
 * existing API contracts;
 * old planner fixtures;
 * report writer inputs;
-* Nir's future MCP implementation.
+* future MCP implementation.
 
 Do not approve merely because all tests pass.
 

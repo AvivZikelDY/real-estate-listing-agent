@@ -62,19 +62,21 @@ Everything else in the pipeline is deterministic Python:
   location.
 - `price_signal` — produces a price signal/comparison for the listing.
 
-## Ownership
+## Ownership boundary
 
-- **Aviv** owns the application, agent, LLM modules, API, GUI, tests,
-  architecture, and deployment — i.e. everything except the three tools'
-  real implementations.
-- **Nir** owns only the **real implementations and data sources** for:
+- The application, agent, LLM modules, API, GUI, tests, architecture, and
+  deployment are one stable area — everything except the three tools'
+  live implementations.
+- The **live tool implementation layer** is a separate, stable integration
+  boundary covering only the real implementations and data sources for:
   - `geo_resolver`
   - `nearby_services`
   - `price_signal`
 
-  Nir does not touch anything else in this repository. See
-  `docs/nir_handoff.md` and `docs/contracts.md` for the exact interfaces
-  Nir must implement against.
+  Work outside this layer must not modify live tool behavior unless the
+  task explicitly targets that layer. See `docs/tools.md` and
+  `docs/contracts.md` for the exact interfaces the live implementations
+  satisfy.
 
 ## Out of Scope (explicitly, for all phases of this project)
 
@@ -84,7 +86,8 @@ Everything else in the pipeline is deterministic Python:
 - RAG (retrieval-augmented generation) / vector search / embeddings.
 - Pinecone or any vector database.
 - A microservices architecture — this is a single deployable app.
-- Aviv implementing Nir's real tool logic — Aviv may only provide stub/mock
+- Providing non-stub/non-mock tool logic outside the live tool
+  implementation layer — other work may only provide stub/mock
   implementations of the tools for testing purposes.
 
 ## Required HTTP Endpoints
@@ -103,7 +106,7 @@ top-level fields: `status`, `error`, `response`, `steps` (see
 
 1. `docs/scope.md` (this file)
 2. `docs/contracts.md`
-3. `docs/nir_handoff.md`
+3. `docs/tools.md`
 4. `.github/copilot-instructions.md`
 5. Empty package directories/skeletons for the future implementation (no
    application logic yet)

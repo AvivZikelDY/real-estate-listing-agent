@@ -41,10 +41,10 @@ govmap therefore covers roughly 254 real metres. See `METRE_INFLATION_AT_TEL_AVI
 
 NO NEW DEPENDENCY
 -----------------
-Hand-rolled rather than using `pyproj`, because `docs/nir_handoff.md:227`
-requires clearing any new third-party package with Aviv first. Web Mercator
-is a simple closed-form spherical projection, so this is a few lines of
-maths with no accuracy concerns.
+Hand-rolled rather than using `pyproj`, because `docs/tools.md:232-233`
+requires dependencies to stay minimal and fit the existing stack. Web
+Mercator is a simple closed-form spherical projection, so this is a few
+lines of maths with no accuracy concerns.
 """
 
 import math

@@ -2,7 +2,7 @@
 
 These instructions apply to all Copilot suggestions and chat/agent sessions
 in this repository. Read `docs/scope.md`, `docs/contracts.md`, and
-`docs/nir_handoff.md` before generating code — they are the source of
+`docs/tools.md` before generating code — they are the source of
 truth for architecture and interfaces.
 
 ## Project summary
@@ -46,12 +46,13 @@ circumstances, anywhere in this repository:
 - **Pinecone** or any other vector database
 - **A microservices architecture** — this is a single deployable
   application; do not split it into separately deployed services
-- **Implementing Nir's real tool implementations.** Copilot may only
+- **Implementing the live tool implementations.** Copilot may only
   generate mock/stub versions of `geo_resolver`, `nearby_services`, and
   `price_signal` (for testing/scaffolding purposes). The real
-  implementations and data sources for these three tools belong to Nir —
-  see `docs/nir_handoff.md`. Do not fill in real logic, real data sources,
-  or real external API integrations for these three tools.
+  implementations and data sources for these three tools are a separate,
+  stable integration boundary — see `docs/tools.md`. Do not fill in real
+  logic, real data sources, or real external API integrations for these
+  three tools.
 
 If a request would require any of the above, stop and flag it instead of
 implementing a workaround.
@@ -77,7 +78,7 @@ implementing a workaround.
   updating `docs/contracts.md` first.
 - Keep ownership boundaries: only touch `src/listing_agent/tools/geo_resolver/`,
   `src/listing_agent/tools/nearby_services/`, `src/listing_agent/tools/price_signal/`
-  (and their tests) with mock/stub implementations, per `docs/nir_handoff.md`.
+  (and their tests) with mock/stub implementations, per `docs/tools.md`.
 
 ## Style / process
 

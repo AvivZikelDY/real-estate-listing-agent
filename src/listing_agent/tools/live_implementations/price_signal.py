@@ -26,7 +26,7 @@ outer `try` turns that into `status="error"` rather than degrading to
 stale data. An EMPTY live answer is not a failure — see
 `_fetch_comparables`.
 
-THE RESULT CONTRACT (docs/nir_handoff.md)
+THE RESULT CONTRACT (docs/tools.md)
 -----------------------------------------
 `ToolResult.status` describes whether the *tool* worked; the typed
 `outcome` field describes what it *found*. They are independent, and

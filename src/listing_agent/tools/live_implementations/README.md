@@ -1,6 +1,6 @@
 # Live tool implementations
 
-Real implementations of the three tools defined in `docs/nir_handoff.md`,
+Real implementations of the three tools defined in `docs/tools.md`,
 backed by live government and OpenStreetMap data. Selected when
 `TOOLS_MODE=live` (see `src/listing_agent/tools/dependency.py`); the `Mock*`
 implementations are used otherwise.

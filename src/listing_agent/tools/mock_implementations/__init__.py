@@ -1,4 +1,4 @@
-"""Aviv's mock/stub tool implementations, used when TOOLS_MODE=mock."""
+"""Mock/stub tool implementations, used when TOOLS_MODE=mock."""
 
 from src.listing_agent.tools.mock_implementations.geo_resolver import MockGeoResolver
 from src.listing_agent.tools.mock_implementations.nearby_services import MockNearbyServices

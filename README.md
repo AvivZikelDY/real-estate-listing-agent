@@ -6,7 +6,7 @@ free-text listing (optionally with a buyer question or goal), it verifies
 only the intentionally supported external-evidence scope for that listing
 — it does not attempt to fact-check every claim in the text.
 
-See `docs/scope.md`, `docs/contracts.md`, and `docs/nir_handoff.md` for
+See `docs/scope.md`, `docs/contracts.md`, and `docs/tools.md` for
 detailed scope, API/interface contracts, and tool-implementation context.
 See `.github/copilot-instructions.md` for hard constraints on this repo.
 

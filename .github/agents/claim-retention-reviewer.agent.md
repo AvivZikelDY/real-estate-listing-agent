@@ -212,7 +212,7 @@ Assess:
 * Evidence Bundle;
 * report-writer input;
 * API contracts;
-* Nir's future MCP integration;
+* future MCP integration;
 * context size and LLM cost.
 
 Do not approve merely because all tests pass.

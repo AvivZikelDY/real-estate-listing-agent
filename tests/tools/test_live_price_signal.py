@@ -1,6 +1,6 @@
 """Tests for `LivePriceSignal` — the govmap-backed real implementation.
 
-Covers requirements 6-11 of `docs/nir_handoff.md` ("required tests").
+Covers requirements 6-11 of `docs/tools.md` ("required tests").
 
 `price_signal` is live-only: every test injects a stub `GovmapClient`, so
 nothing here touches the network, but there is no offline snapshot to fall

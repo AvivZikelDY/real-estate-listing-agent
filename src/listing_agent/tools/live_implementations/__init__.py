@@ -1,7 +1,7 @@
 """Live tool implementations, selected when `TOOLS_MODE=live`.
 
 Real implementations backed by live external services (GovMap, OpenStreetMap
-via Overpass). See `docs/contracts.md` and `docs/nir_handoff.md` for the
+via Overpass). See `docs/contracts.md` and `docs/tools.md` for the
 per-tool contract and implementation notes.
 """
 

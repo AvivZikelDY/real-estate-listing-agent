@@ -214,7 +214,7 @@ Each response is the exact `{status, error, response, steps}` shape; the
 `reused`/`executed`/`tool_calls_saved` detail described in §7 is only in
 the server's own logs/internal trace, not in these HTTP responses.
 
-## 10. Switching to MCP later (Nir integration)
+## 10. Switching to MCP later
 
 One env var, at the `ToolExecutor` seam only
 (`agent/tool_executor/dependency.py`):
@@ -227,8 +227,7 @@ export MCP_REQUEST_TIMEOUT_SECONDS=10
 
 `McpToolExecutor` currently raises `NotImplementedError` on `execute()` —
 it exists only to prove the seam and configuration validation, not to
-talk to a real MCP server yet (that is future Nir integration work, out
-of scope here). No other module changes when this switch flips: the
+talk to a real MCP server yet (that is future work, out of scope here). No other module changes when this switch flips: the
 planner, validator, `ConversationContext`/cache, evidence bundle,
 report writer, API, and GUI all depend only on the `ToolExecutor`
 interface, never on `LocalToolExecutor` or `McpToolExecutor` directly.

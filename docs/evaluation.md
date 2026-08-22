@@ -137,7 +137,7 @@ Two stages are supported:
 - `--stage evidence` — additionally runs the validated plan through
   `LocalToolExecutor` against the **mock** tool registry (forced to
   `tools_mode="mock"` regardless of ambient settings), then
-  `collect_evidence` and `build_evidence_bundle`. Never uses Nir's real
+  `collect_evidence` and `build_evidence_bundle`. Never uses the live
   tools or any external provider.
 
 Example commands:
@@ -180,8 +180,8 @@ Notes on real-LLM usage:
 - **No real tool data is tested.** All scenarios run against
   `MockGeoResolver`/`MockNearbyServices`/`MockPriceSignal` (or the
   injected-failure double). Real-world geocoding, POI, and price-comps
-  accuracy is Nir's responsibility and is validated separately per
-  `docs/nir_handoff.md`.
+  accuracy is validated separately, against the live implementations, per
+  `docs/tools.md`.
 - **No adversarial or prompt-injection testing.** Scenarios use
   well-formed, good-faith listing text. Robustness against malicious or
   malformed input is not covered here.

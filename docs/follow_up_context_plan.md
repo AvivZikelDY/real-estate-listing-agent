@@ -255,7 +255,7 @@ See `artifacts/follow-up-context/multi-turn-demo.json` and
 No Redis/Postgres/vector DB, no RAG, no full chat transcript storage, no
 third LLM call, no new agent, no new MCP tool, no generic caching
 framework, no distributed sessions, no authentication, no TTL framework,
-no background cleanup workers. `Nir`'s tool implementations
+no background cleanup workers. The tool implementations
 (`geo_resolver`, `nearby_services`, `price_signal`) and their typed
 contracts are completely unaware of, and unchanged by, this feature — see
-`docs/nir_handoff.md`.
+`docs/tools.md`.

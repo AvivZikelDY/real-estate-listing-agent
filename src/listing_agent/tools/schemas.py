@@ -1,7 +1,7 @@
 """Pydantic v2 schemas shared by tool implementations.
 
 These models formalize the tool contracts described in
-`docs/contracts.md` §4 and `docs/nir_handoff.md`. They are used by the
+`docs/contracts.md` §4 and `docs/tools.md`. They are used by the
 `ToolRegistry`, by both mock implementations and the live
 implementations, and by `evidence_collector`.
 

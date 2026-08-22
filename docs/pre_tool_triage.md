@@ -418,5 +418,5 @@ A Pre-Tool Triage passes when:
 * important unverified claims produce useful follow-up questions;
 * no real-tool result is invented.
 
-This contract is the primary acceptance surface until Nir's real tools are
-connected.
+This contract is the primary acceptance surface for testing the pipeline
+without invoking the live tool implementations.

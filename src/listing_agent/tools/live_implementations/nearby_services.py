@@ -18,11 +18,11 @@ two tools now that they are all live-only.
 Every distance here is as-the-crow-flies. It is NOT walking distance and
 NOT walking time: a park 200m away across a rail line or a river may be a
 fifteen-minute walk. The contract requires this be disclosed on every
-single result (`docs/nir_handoff.md:136`), and `_STRAIGHT_LINE_LIMITATION`
+single result (`docs/tools.md:143`), and `_STRAIGHT_LINE_LIMITATION`
 is therefore added unconditionally, in every code path, including the
 empty one.
 
-THE RESULT CONTRACT (docs/nir_handoff.md)
+THE RESULT CONTRACT (docs/tools.md)
 -----------------------------------------
 This tool has no typed `outcome` field, unlike the other two. An area with
 no services is simply a successful result that happens to be empty:

@@ -343,18 +343,18 @@ response schemas are defined in `src/listing_agent/llm/client/`.
 
 These are the exact function-level contracts the live implementations
 satisfy (formalized as Pydantic v2 models in
-`src/listing_agent/tools/schemas.py`). Aviv's mock implementations conform
+`src/listing_agent/tools/schemas.py`). The mock implementations conform
 to the same contract for fast/offline testing; the live implementations
 replace the internals only, not the interface — the schemas below were
 never changed during integration. Every tool implements `BaseTool`
 (`src/listing_agent/tools/base.py`) and returns a `ToolResult[...]`
-envelope — see `docs/nir_handoff.md` for the full contract, including
+envelope — see `docs/tools.md` for the full contract, including
 error/skip behavior and required tests.
 
 **Which implementation runs — `TOOLS_MODE`:** the `TOOLS_MODE` environment
 variable (`Settings.tools_mode`, see `src/listing_agent/tools/dependency.py`)
 selects the whole tool set for a process, never per-request:
-- `TOOLS_MODE=mock` (the default) uses Aviv's small, hardcoded
+- `TOOLS_MODE=mock` (the default) uses small, hardcoded
   `Mock*` implementations under `src/listing_agent/tools/mock_implementations/`
   — fast, offline, deterministic; used by the entire pytest suite.
 - `TOOLS_MODE=live` uses the real `Live*` implementations under
@@ -372,7 +372,7 @@ selects the whole tool set for a process, never per-request:
   this mode too.
 Neither `ToolRegistry`/`ToolExecutor` nor the tools themselves know that
 `ConversationContext`/evidence-reuse exists (see §2 and
-`docs/nir_handoff.md`) — that logic sits strictly above this seam.
+`docs/tools.md`) — that logic sits strictly above this seam.
 
 **`ToolResult.status` semantics** (frozen across all three tools):
 `"ok"` means the tool ran and produced a well-formed answer — **including
@@ -629,8 +629,8 @@ university project. None block normal operation.
   `geo_resolver` already ran and its coordinates are cached for this
   conversation. This is a real, known optimization gap (one extra
   provider round-trip on some price-check turns), not a caching bug —
-  Aviv's cache still correctly reuses the `geo_resolver` result itself at
-  the agent/evidence layer.
+  the conversation cache still correctly reuses the `geo_resolver` result
+  itself at the agent/evidence layer.
 - **The asyncio-based per-tool/per-request timeouts (`tool_timeout_seconds`,
   `max_total_tool_execution_seconds`, `llm_request_timeout_seconds`) are
   process-wide `asyncio.wait_for` deadlines**, not a fine-grained

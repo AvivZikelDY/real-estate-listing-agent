@@ -118,7 +118,7 @@ Confirm that:
 - tool inputs remain typed and grounded;
 - important unsupported information is preserved;
 - no new production LLM call was added;
-- Nir's tool contracts were not broken.
+- the live tool contracts were not broken.
 
 Return PASS or FAIL with an acceptance matrix.
 ```
@@ -144,7 +144,7 @@ Only then commit the change.
 
 ---
 
-# Recommended iteration while Nir is working
+# Recommended iteration without the live tools
 
 Do not wait for the MCP implementation.
 

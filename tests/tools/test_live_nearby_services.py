@@ -1,6 +1,6 @@
 """Tests for `LiveNearbyServices` — the OpenStreetMap-backed implementation.
 
-Covers requirements 4, 5, 10 and 11 of `docs/nir_handoff.md`.
+Covers requirements 4, 5, 10 and 11 of `docs/tools.md`.
 
 `nearby_services` is live-only: every test injects a stub `OverpassClient`,
 so nothing here touches the network, and there is no offline snapshot to
@@ -92,7 +92,7 @@ async def test_location_with_services_returns_places_and_categories() -> None:
 
 @pytest.mark.asyncio
 async def test_straight_line_limitation_is_always_present() -> None:
-    """Mandatory on every result (docs/nir_handoff.md:136)."""
+    """Mandatory on every result (docs/tools.md:143)."""
     tool = LiveNearbyServices(
         client_factory=_live([_place("סופר", "supermarket", _NEAR, _LON)])
     )
