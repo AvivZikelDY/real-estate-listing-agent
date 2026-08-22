@@ -1,11 +1,11 @@
-"""Phase 16: the Nir integration boundary test.
+"""Phase 16: the `ToolExecutor` transport-boundary test.
 
 Proves that `agent.conversation` (the context/cache layer) only ever calls
 through the frozen `ToolExecutor` Protocol, sending it just the reduced
 set of calls the reuse logic decided still need to run - completely
 unaware of, and unaffected by, which concrete transport implements
 `ToolExecutor.execute()`. Uses a fake in-memory `McpToolExecutor`-shaped
-stub (never Nir's real implementations, never a real MCP call) to prove
+stub (never the live implementations, never a real MCP call) to prove
 this holds for a transport other than `LocalToolExecutor` too.
 """
 
@@ -32,7 +32,7 @@ KNOWN_ADDRESS = "HaYarkon 120, Tel Aviv"
 
 class FakeMcpToolExecutor:
     """A minimal stand-in "future McpToolExecutor" - structurally satisfies
-    the `ToolExecutor` Protocol but has nothing to do with Nir's real
+    the `ToolExecutor` Protocol but has nothing to do with the live
     tools/MCP server. Records every call it actually receives so the test
     can assert the context/cache layer sent it only the reduced work."""
 

@@ -19,7 +19,7 @@ Raw listing + optional user question
 ```
 
 This script never imports/instantiates `McpToolExecutor` or `report_writer`,
-and only reaches Nir's real tool implementations when `--live-tools` is
+and only reaches the live tool implementations when `--live-tools` is
 passed explicitly - it reuses only the production entry points:
 `run_triage_planner`, `plan_validator.validate_plan`,
 `agent.claim_categories`, `evidence_mapper`, `agent.tool_input_builder`,
@@ -247,7 +247,7 @@ def _tool_executor(settings: Settings, *, live_tools: bool) -> tuple[LocalToolEx
 
     With `--live-tools` (`live_tools=True`) it instead honours the
     process's own `TOOLS_MODE`, which is the only way this script can
-    observe Nir's real implementations end to end. That reaches live
+    observe the live tool implementations end to end. That reaches live
     third-party HTTP APIs (govmap, Overpass) and is therefore always an
     explicit opt-in, never the default. `TOOL_BACKEND` is still ignored:
     this script only ever uses the in-process `LocalToolExecutor`, never
@@ -746,7 +746,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Run --stage evidence against the tools selected by TOOLS_MODE instead of "
-            "always forcing the mocks. With TOOLS_MODE=nir this makes real HTTP calls "
+            "always forcing the mocks. With TOOLS_MODE=live this makes real HTTP calls "
             "to govmap and Overpass, so a run can take tens of seconds."
         ),
     )

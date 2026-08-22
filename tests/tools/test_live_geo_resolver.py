@@ -1,4 +1,4 @@
-"""Tests for `NirGeoResolver` — the govmap-backed real implementation.
+"""Tests for `LiveGeoResolver` — the govmap-backed real implementation.
 
 Covers requirements 1-3, 10 and 11 of `docs/nir_handoff.md`.
 
@@ -11,8 +11,8 @@ tests meaningful rather than self-fulfilling.
 import pytest
 
 from src.listing_agent.tools.base import BaseTool
-from src.listing_agent.tools.nir_implementations.geo_resolver import NirGeoResolver
-from src.listing_agent.tools.nir_implementations.govmap_client import ComparableDeal
+from src.listing_agent.tools.live_implementations.geo_resolver import LiveGeoResolver
+from src.listing_agent.tools.live_implementations.govmap_client import ComparableDeal
 from src.listing_agent.tools.registry import ToolRegistry
 from src.listing_agent.tools.schemas import GeoResolverInput
 
@@ -40,7 +40,7 @@ _HERZL_AMBIGUOUS = [
 class _StubClient:
     """Minimal stand-in for `GovmapClient`, with no network access.
 
-    Class attributes are set per-test before use, because `NirGeoResolver`
+    Class attributes are set per-test before use, because `LiveGeoResolver`
     constructs the factory itself with no arguments.
     """
 
@@ -96,7 +96,7 @@ def _deal(neighborhood: str) -> ComparableDeal:
 
 @pytest.mark.asyncio
 async def test_known_address_resolves_with_coordinates() -> None:
-    tool = NirGeoResolver(client_factory=_stub(results=[_ROTHSCHILD], deals=[_deal("לב העיר")]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[_ROTHSCHILD], deals=[_deal("לב העיר")]))
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -115,7 +115,7 @@ async def test_known_address_resolves_with_coordinates() -> None:
 @pytest.mark.asyncio
 async def test_resolved_coordinates_satisfy_the_schema_bounds() -> None:
     """The whole point of the coordinate conversion (schemas.py:83-84)."""
-    tool = NirGeoResolver(client_factory=_stub(results=[_ROTHSCHILD]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[_ROTHSCHILD]))
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -139,7 +139,7 @@ async def test_resolution_quality_follows_the_match_type(
 ) -> None:
     """A street-level match must not claim building-level precision."""
     payload = {**_ROTHSCHILD, "type": result_type}
-    tool = NirGeoResolver(client_factory=_stub(results=[payload]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[payload]))
 
     result = await tool.execute(GeoResolverInput(address="whatever"))
 
@@ -162,7 +162,7 @@ async def test_non_address_result_types_are_rejected(result_type: str) -> None:
     unrecognised category is excluded by default rather than silently
     treated as an address.
     """
-    tool = NirGeoResolver(client_factory=_stub(results=[{**_ROTHSCHILD, "type": result_type}]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[{**_ROTHSCHILD, "type": result_type}]))
 
     result = await tool.execute(GeoResolverInput(address="כתובת לא קיימת 999"))
 
@@ -183,7 +183,7 @@ async def test_duplicate_candidate_names_are_deduplicated() -> None:
         {**_ROTHSCHILD, "text": "הרצל תל-אביב", "type": "street", "score": 3910.2},
         {**_ROTHSCHILD, "text": "גבעת הרצל תל-אביב", "type": "street", "score": 3269.7},
     ]
-    tool = NirGeoResolver(client_factory=_stub(results=results))
+    tool = LiveGeoResolver(client_factory=_stub(results=results))
 
     result = await tool.execute(GeoResolverInput(address="הרצל"))
 
@@ -205,7 +205,7 @@ async def test_dominant_score_resolves_despite_extra_matches() -> None:
     rule alone.
     """
     noise = [{**_ROTHSCHILD, "text": f"noise {i}", "score": 515.0} for i in range(3)]
-    tool = NirGeoResolver(client_factory=_stub(results=[_ROTHSCHILD, *noise]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[_ROTHSCHILD, *noise]))
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -218,7 +218,7 @@ async def test_dominant_score_resolves_despite_extra_matches() -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_address_returns_not_found_not_an_error() -> None:
-    tool = NirGeoResolver(client_factory=_stub(results=[]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[]))
 
     result = await tool.execute(GeoResolverInput(address="כתובת שלא קיימת בכלל 999"))
 
@@ -233,7 +233,7 @@ async def test_unknown_address_returns_not_found_not_an_error() -> None:
 @pytest.mark.asyncio
 async def test_match_without_a_usable_coordinate_is_not_found() -> None:
     """A name with no position is nothing to act on — never invent one."""
-    tool = NirGeoResolver(client_factory=_stub(results=[{**_ROTHSCHILD, "shape": "GARBAGE"}]))
+    tool = LiveGeoResolver(client_factory=_stub(results=[{**_ROTHSCHILD, "shape": "GARBAGE"}]))
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -275,7 +275,7 @@ async def test_lone_junk_survivor_is_not_found_not_resolved() -> None:
          "text": "הקרן קיימת תל אביב", "type": "street", "score": 202.316,
          "shape": "POINT(3874629.383445255 3779145.1508724773)"},
     ]
-    tool = NirGeoResolver(client_factory=_stub(results=results))
+    tool = LiveGeoResolver(client_factory=_stub(results=results))
 
     result = await tool.execute(
         GeoResolverInput(address="כתובת לא קיימת 999", city_hint="תל אביב")
@@ -299,7 +299,7 @@ async def test_settlement_match_missing_the_house_number_is_not_found() -> None:
         {**_ROTHSCHILD, "text": "רחוב", "type": "settlement", "score": 269.1},
         {**_ROTHSCHILD, "text": "רחובות", "type": "settlement", "score": 241.0},
     ]
-    tool = NirGeoResolver(client_factory=_stub(results=results))
+    tool = LiveGeoResolver(client_factory=_stub(results=results))
 
     result = await tool.execute(GeoResolverInput(address="רחוב שלא נמצא 777 חיפה"))
 
@@ -314,7 +314,7 @@ async def test_a_street_level_query_with_no_house_number_still_resolves() -> Non
     "דיזנגוף תל אביב" is a legitimate street-level question, and a street
     match is the honest answer to it — the check must not reject it.
     """
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub(
             results=[{**_ROTHSCHILD, "text": "דיזנגוף תל אביב", "type": "street"}]
         )
@@ -337,7 +337,7 @@ async def test_the_prefixed_address_form_the_planner_produces_still_resolves() -
     range. A score floor rejected this real address end to end; the
     house-number check accepts it, because "30" is present in the match.
     """
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub(results=[{**_ROTHSCHILD, "score": 236.72229}])
     )
 
@@ -355,7 +355,7 @@ async def test_the_prefixed_address_form_the_planner_produces_still_resolves() -
 
 @pytest.mark.asyncio
 async def test_ambiguous_address_lists_candidates() -> None:
-    tool = NirGeoResolver(client_factory=_stub(results=_HERZL_AMBIGUOUS))
+    tool = LiveGeoResolver(client_factory=_stub(results=_HERZL_AMBIGUOUS))
 
     result = await tool.execute(GeoResolverInput(address="הרצל תל אביב"))
 
@@ -377,7 +377,7 @@ async def test_identical_scores_across_cities_are_ambiguous() -> None:
         {**_ROTHSCHILD, "text": f"דיזנגוף 1 {city}", "score": 1358.9}
         for city in ("NETANYA", "TLV", "HOLON", "HAIFA", "ASHDOD", "EILAT")
     ]
-    tool = NirGeoResolver(client_factory=_stub(results=results))
+    tool = LiveGeoResolver(client_factory=_stub(results=results))
 
     result = await tool.execute(GeoResolverInput(address="דיזנגוף"))
 
@@ -394,7 +394,7 @@ async def test_identical_scores_across_cities_are_ambiguous() -> None:
 async def test_city_hint_is_folded_into_the_query() -> None:
     """govmap has no city field, so the hint must go into the search text."""
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(GeoResolverInput(address="דיזנגוף", city_hint="תל אביב"))
 
@@ -404,7 +404,7 @@ async def test_city_hint_is_folded_into_the_query() -> None:
 @pytest.mark.asyncio
 async def test_city_hint_is_not_duplicated_when_already_present() -> None:
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב", city_hint="תל אביב"))
 
@@ -427,7 +427,7 @@ async def test_the_filler_word_street_is_dropped_from_the_query() -> None:
     form returns one match and resolves.
     """
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(
         GeoResolverInput(address="ברחוב רוטשילד 30 בתל אביב", city_hint="תל אביב")
@@ -440,7 +440,7 @@ async def test_the_filler_word_street_is_dropped_from_the_query() -> None:
 async def test_the_city_prefix_is_removed_only_where_the_hint_identifies_it() -> None:
     """"בתל אביב" -> "תל אביב", using the hint rather than guessing."""
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(GeoResolverInput(address="דיזנגוף 100 בתל אביב", city_hint="תל אביב"))
 
@@ -456,7 +456,7 @@ async def test_a_street_name_beginning_with_the_prefix_letter_is_untouched() -> 
     are only ever removed where `city_hint` identifies the exact string.
     """
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן", city_hint="רמת גן"))
 
@@ -467,7 +467,7 @@ async def test_a_street_name_beginning_with_the_prefix_letter_is_untouched() -> 
 async def test_an_address_that_is_only_filler_falls_back_to_the_original() -> None:
     """Stripping must never leave an empty query."""
     stub = _stub(results=[_ROTHSCHILD])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     await tool.execute(GeoResolverInput(address="רחוב"))
 
@@ -488,7 +488,7 @@ async def test_resolution_survives_a_failing_neighborhood_lookup() -> None:
         async def polygons_by_radius(self, x, y, radius=300):
             raise RuntimeError("polygon service is down")
 
-    tool = NirGeoResolver(client_factory=_Failing)
+    tool = LiveGeoResolver(client_factory=_Failing)
 
     result = await tool.execute(GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -501,7 +501,7 @@ async def test_resolution_survives_a_failing_neighborhood_lookup() -> None:
 
 @pytest.mark.asyncio
 async def test_neighborhood_lookup_can_be_disabled_to_save_calls() -> None:
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub(results=[_ROTHSCHILD], deals=[_deal("לב העיר")]),
         resolve_neighborhood=False,
     )
@@ -518,7 +518,7 @@ async def test_neighborhood_lookup_can_be_disabled_to_save_calls() -> None:
 
 @pytest.mark.asyncio
 async def test_data_source_failure_returns_error_not_exception() -> None:
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub(raise_on_autocomplete=RuntimeError("govmap is unreachable"))
     )
 
@@ -534,17 +534,17 @@ async def test_data_source_failure_returns_error_not_exception() -> None:
 
 
 def test_tool_name_matches_the_whitelisted_name() -> None:
-    assert NirGeoResolver().name == "geo_resolver"
+    assert LiveGeoResolver().name == "geo_resolver"
 
 
 def test_tool_satisfies_the_base_tool_protocol() -> None:
-    assert isinstance(NirGeoResolver(), BaseTool)
+    assert isinstance(LiveGeoResolver(), BaseTool)
 
 
 @pytest.mark.asyncio
 async def test_tool_executes_through_the_registry() -> None:
     registry = ToolRegistry()
-    registry.register(NirGeoResolver(client_factory=_stub(results=[_ROTHSCHILD])))
+    registry.register(LiveGeoResolver(client_factory=_stub(results=[_ROTHSCHILD])))
 
     result = await registry.execute("geo_resolver", GeoResolverInput(address="רוטשילד 30 תל אביב"))
 
@@ -603,7 +603,7 @@ async def test_a_house_number_missing_from_the_index_falls_back_to_the_street() 
     the whole listing unchecked — while the same query WITHOUT the number
     resolves cleanly.
     """
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub_by_query(
             {
                 # Live behaviour. The prefixed forms return numbered
@@ -650,7 +650,7 @@ async def test_the_fallback_removes_only_the_house_number() -> None:
             "שמואל תמיר תל אביב": [_SHMUEL_TAMIR_STREET],
         }
     )
-    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+    tool = LiveGeoResolver(client_factory=stub, resolve_neighborhood=False)
 
     await tool.execute(GeoResolverInput(address="בשמואל תמיר 2, תל אביב", city_hint="תל אביב"))
 
@@ -682,7 +682,7 @@ async def test_the_fallback_does_not_resurrect_the_junk_match() -> None:
         "score": 202.316,
         "shape": "POINT(3874629.383445255 3779145.1508724773)",
     }
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub_by_query(
             {
                 "כתובת לא קיימת 999 תל אביב": [junk_street],
@@ -704,7 +704,7 @@ async def test_the_fallback_does_not_resurrect_the_junk_match() -> None:
 async def test_the_fallback_refuses_anything_coarser_than_a_street() -> None:
     """A settlement match means the street itself was never found."""
     settlement = {**_ROTHSCHILD, "text": "רחוב", "type": "settlement", "score": 269.1}
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub_by_query(
             {"רחוב שלא נמצא 777 חיפה": [settlement], "רחוב שלא נמצא חיפה": [settlement]}
         )
@@ -723,7 +723,7 @@ async def test_the_fallback_stays_unresolved_between_two_similar_streets() -> No
         {**_SHMUEL_TAMIR_STREET, "text": "שמואל תמיר תל אביב", "score": 4592.9},
         {**_SHMUEL_TAMIR_STREET, "text": "שמואל תמיר רמת גן", "score": 4400.0},
     ]
-    tool = NirGeoResolver(
+    tool = LiveGeoResolver(
         client_factory=_stub_by_query(
             {"שמואל תמיר 2": _SHMUEL_TAMIR_NUMBERS, "שמואל תמיר": streets}
         )
@@ -760,7 +760,7 @@ async def test_a_prefixed_street_name_is_retried_without_the_prefix() -> None:
             "שמואל תמיר 2 תל אביב": [correct],
         }
     )
-    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+    tool = LiveGeoResolver(client_factory=stub, resolve_neighborhood=False)
 
     result = await tool.execute(
         GeoResolverInput(address="בשמואל תמיר 2 תל אביב", city_hint="תל אביב")
@@ -789,7 +789,7 @@ async def test_the_retry_must_still_name_the_place_the_listing_named() -> None:
             "יאליק 25 רמת גן": [{**_ROTHSCHILD, "text": "יהלום 25 רמת גן"}],
         }
     )
-    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+    tool = LiveGeoResolver(client_factory=stub, resolve_neighborhood=False)
 
     result = await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן"))
 
@@ -803,7 +803,7 @@ async def test_a_street_that_really_begins_with_the_prefix_letter_still_resolves
     """The retry is additive: it cannot cost a match the faithful query got."""
     bialik = {**_ROTHSCHILD, "text": "ביאליק 25 רמת גן"}
     stub = _stub_by_query({"ביאליק 25 רמת גן": [bialik]}, deals=[_deal("מרכז")])
-    tool = NirGeoResolver(client_factory=stub)
+    tool = LiveGeoResolver(client_factory=stub)
 
     result = await tool.execute(GeoResolverInput(address="ביאליק 25 רמת גן"))
 
@@ -822,7 +822,7 @@ async def test_a_failed_retry_reports_the_faithful_query_outcome() -> None:
     act on silence produced by a question the listing never asked.
     """
     stub = _stub_by_query({"בהרצל תל אביב": _HERZL_AMBIGUOUS, "הרצל תל אביב": []})
-    tool = NirGeoResolver(client_factory=stub, resolve_neighborhood=False)
+    tool = LiveGeoResolver(client_factory=stub, resolve_neighborhood=False)
 
     result = await tool.execute(GeoResolverInput(address="בהרצל תל אביב"))
 

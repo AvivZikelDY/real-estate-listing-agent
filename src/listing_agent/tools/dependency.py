@@ -3,27 +3,25 @@
 Selection is driven entirely by `Settings.tools_mode` (env var
 `TOOLS_MODE`):
 - "mock" -> Mock* implementations (deterministic, offline)
-- "nir"  -> Nir*  implementations (real implementations; currently raise
-            NotImplementedError until Nir replaces them)
+- "live" -> Live* implementations (real, live GovMap + Overpass HTTP calls)
 
-Any other value fails clearly and immediately. Nir* implementations are
-never selected while TOOLS_MODE=mock.
+Any other value fails clearly and immediately.
 """
 
 from src.listing_agent.config import Settings, get_settings
+from src.listing_agent.tools.live_implementations import (
+    LiveGeoResolver,
+    LiveNearbyServices,
+    LivePriceSignal,
+)
 from src.listing_agent.tools.mock_implementations import (
     MockGeoResolver,
     MockNearbyServices,
     MockPriceSignal,
 )
-from src.listing_agent.tools.nir_implementations import (
-    NirGeoResolver,
-    NirNearbyServices,
-    NirPriceSignal,
-)
 from src.listing_agent.tools.registry import ToolRegistry
 
-SUPPORTED_TOOLS_MODES = ("mock", "nir")
+SUPPORTED_TOOLS_MODES = ("mock", "live")
 
 
 def get_tool_registry(settings: Settings | None = None) -> ToolRegistry:
@@ -39,10 +37,10 @@ def get_tool_registry(settings: Settings | None = None) -> ToolRegistry:
         registry.register(MockPriceSignal())
         return registry
 
-    if mode == "nir":
-        registry.register(NirGeoResolver())
-        registry.register(NirNearbyServices())
-        registry.register(NirPriceSignal())
+    if mode == "live":
+        registry.register(LiveGeoResolver())
+        registry.register(LiveNearbyServices())
+        registry.register(LivePriceSignal())
         return registry
 
     raise ValueError(

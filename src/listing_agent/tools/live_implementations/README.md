@@ -1,8 +1,8 @@
-# Nir's tool implementations
+# Live tool implementations
 
 Real implementations of the three tools defined in `docs/nir_handoff.md`,
 backed by live government and OpenStreetMap data. Selected when
-`TOOLS_MODE=nir` (see `src/listing_agent/tools/dependency.py`); the `Mock*`
+`TOOLS_MODE=live` (see `src/listing_agent/tools/dependency.py`); the `Mock*`
 implementations are used otherwise.
 
 > **Maintenance note:** this document is updated on request only. It is not
@@ -28,7 +28,7 @@ what we honestly found"* apart from *"the check itself broke."*
 
 ---
 
-## `geo_resolver` → `NirGeoResolver`
+## `geo_resolver` → `LiveGeoResolver`
 
 **What it does.** Takes a free-text address as a human wrote it and decides
 whether it points at exactly one real place.
@@ -87,7 +87,7 @@ fails the resolution, since the coordinates are already correct.
 
 ---
 
-## `price_signal` → `NirPriceSignal`
+## `price_signal` → `LivePriceSignal`
 
 **What it does.** Compares a listing's price per m² against real recorded
 sales near the same address, and reports the deviation from the local median.
@@ -173,7 +173,7 @@ so it holds regardless of what other fields are present.
 
 ---
 
-## `nearby_services` → `NirNearbyServices`
+## `nearby_services` → `LiveNearbyServices`
 
 **What it does.** Finds schools, parks, supermarkets, pharmacies, daycares,
 transport stops and hospitals within a radius of the resolved coordinates.
@@ -226,8 +226,8 @@ runtime request path never does.
 ### Regenerating the data files
 
 ```bash
-python -m src.listing_agent.tools.nir_implementations.build_snapshot
-python -m src.listing_agent.tools.nir_implementations.build_poi_snapshot
+python -m src.listing_agent.tools.live_implementations.build_snapshot
+python -m src.listing_agent.tools.live_implementations.build_poi_snapshot
 ```
 
 Both refuse to overwrite good data with an empty result.

@@ -1,4 +1,4 @@
-"""Nir's real `price_signal` implementation, backed by govmap deal data.
+"""Live `price_signal` implementation, backed by govmap deal data.
 
 WHAT THIS TOOL DOES
 -------------------
@@ -45,7 +45,7 @@ not an error. Only a genuine technical failure is `status="error"`.
 import logging
 import statistics
 
-from src.listing_agent.tools.nir_implementations.govmap_client import (
+from src.listing_agent.tools.live_implementations.govmap_client import (
     ComparableDeal,
     GovmapClient,
 )
@@ -97,7 +97,7 @@ _MAX_DEAL_AGE_YEARS = 3
 _MIN_RECENT_COMPARABLES = 8
 
 
-class NirPriceSignal:
+class LivePriceSignal:
     """Real `price_signal` tool backed by government transaction records."""
 
     # Must match the whitelisted tool name exactly — the registry looks the

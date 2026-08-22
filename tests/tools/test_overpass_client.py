@@ -1,6 +1,6 @@
 """Tests for `OverpassClient._post` — the mirror-fallback layer.
 
-The `NirNearbyServices` tests stub the whole `OverpassClient`, so the mirror
+The `LiveNearbyServices` tests stub the whole `OverpassClient`, so the mirror
 loop itself was previously untested. These tests drive it through
 `httpx.MockTransport` (an httpx test double that answers requests from a
 local handler function), so nothing here touches the network.
@@ -18,7 +18,7 @@ from src.listing_agent.agent.tool_executor.errors import (
     ToolProviderUnavailableError,
     ToolRateLimitedError,
 )
-from src.listing_agent.tools.nir_implementations.overpass_client import OverpassClient
+from src.listing_agent.tools.live_implementations.overpass_client import OverpassClient
 
 _MIRROR_A = "https://mirror-a.test/api/interpreter"
 _MIRROR_B = "https://mirror-b.test/api/interpreter"

@@ -1,4 +1,4 @@
-"""Standalone test runner for Nir's tool implementations - no LLM involved.
+"""Standalone test runner for the live tool implementations - no LLM involved.
 
 Runs the deterministic half of the pipeline (everything the app does once
 the planner has finished) against a set of hand-written `TriagePlan`
@@ -8,7 +8,7 @@ fixtures, and checks what the tools actually returned:
 canned TriagePlan (no LLM call, ever)
 -> plan_validator.validate_plan
 -> tool_input_builder.build_tool_input
--> LocalToolExecutor -> ToolRegistry -> Nir* / Mock* tools
+-> LocalToolExecutor -> ToolRegistry -> Live* / Mock* tools
 -> evidence_collector.collect_evidence
 -> evidence_bundle_builder.build_evidence_bundle
 -> STOP (report_writer is never called)
@@ -21,15 +21,15 @@ an LLM call and never needs API credentials. The plans come from
 
 Results go to two places at once: the `logging` logger (stdout) and a
 timestamped report file under
-`src/listing_agent/tools/nir_implementations/test_results/`.
+`src/listing_agent/tools/live_implementations/test_results/`.
 
 Usage:
-    python scripts/run_nir_tool_tests.py                  # live Nir tools
-    python scripts/run_nir_tool_tests.py --tools mock     # offline, instant
-    python scripts/run_nir_tool_tests.py --case 11        # one case only
-    python scripts/run_nir_tool_tests.py --out report.txt # custom file
+    python scripts/run_live_tool_tests.py                  # live tools
+    python scripts/run_live_tool_tests.py --tools mock     # offline, instant
+    python scripts/run_live_tool_tests.py --case 11        # one case only
+    python scripts/run_live_tool_tests.py --out report.txt # custom file
 
-WARNING: with `--tools nir` every case makes real HTTP calls to govmap and
+WARNING: with `--tools live` every case makes real HTTP calls to govmap and
 Overpass. Overpass mirrors fail over on 504/timeout, so a single case can
 take over a minute and the full run several minutes. Progress is logged as
 each case starts.
@@ -60,13 +60,13 @@ from src.listing_agent.agent.tool_executor.local import LocalToolExecutor  # noq
 from src.listing_agent.config import get_settings  # noqa: E402
 from src.listing_agent.tools.dependency import get_tool_registry  # noqa: E402
 
-LOGGER = logging.getLogger("nir_tool_tests")
+LOGGER = logging.getLogger("live_tool_tests")
 
 # Default location for the generated report, as requested: inside the
-# nir_implementations package. Generated output, not source - safe to
+# live_implementations package. Generated output, not source - safe to
 # delete, and worth gitignoring if you don't want runs committed.
 DEFAULT_RESULTS_DIR = (
-    _REPO_ROOT / "src" / "listing_agent" / "tools" / "nir_implementations" / "test_results"
+    _REPO_ROOT / "src" / "listing_agent" / "tools" / "live_implementations" / "test_results"
 )
 
 
@@ -79,7 +79,7 @@ class ToolExpectation:
     `insufficient_data` / `no_comparable_data` for price_signal).
     `nearby_services` has no outcome field, so it stays `None` there.
 
-    Only checked under `--tools nir`: the mock implementations answer from
+    Only checked under `--tools live`: the mock implementations answer from
     a fixed dataset and resolve every address, so live-data outcomes like
     "ambiguous" are meaningless against them.
     """
@@ -98,7 +98,7 @@ class TestCase:
     expected_planned: tuple[str, ...]
     # Tools that must NOT appear in the final plan.
     expected_dropped: tuple[str, ...] = ()
-    # Per-tool expectations, checked only under `--tools nir`.
+    # Per-tool expectations, checked only under `--tools live`.
     live_expectations: dict[str, ToolExpectation] = field(default_factory=dict)
 
 
@@ -257,7 +257,7 @@ async def _run_case(case: TestCase, tools_mode: str) -> tuple[bool, dict[str, An
     """Run one case end to end. Returns `(passed, details)`."""
     scenario = SCENARIOS[case.scenario_id]
     settings = get_settings().model_copy(update={"tools_mode": tools_mode})
-    live = tools_mode == "nir"
+    live = tools_mode == "live"
 
     LOGGER.info("")
     LOGGER.info("=" * 78)
@@ -366,16 +366,16 @@ def _configure_logging(report_path: Path) -> None:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run Nir's tools through the real post-planner pipeline using canned "
+            "Run the live tools through the real post-planner pipeline using canned "
             "TriagePlans. Never calls an LLM."
         )
     )
     parser.add_argument(
         "--tools",
-        choices=("nir", "mock"),
-        default="nir",
+        choices=("live", "mock"),
+        default="live",
         help=(
-            "Which implementations to exercise. 'nir' (default) makes real govmap "
+            "Which implementations to exercise. 'live' (default) makes real govmap "
             "and Overpass calls; 'mock' is offline and instant, and only the "
             "plan-level assertions are checked."
         ),
@@ -393,7 +393,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Where to write the report. Defaults to a timestamped file under "
-            "src/listing_agent/tools/nir_implementations/test_results/."
+            "src/listing_agent/tools/live_implementations/test_results/."
         ),
     )
     return parser.parse_args(argv)
@@ -414,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
         TEST_CASES
     )
 
-    LOGGER.info("Nir tool test run")
+    LOGGER.info("Live tool test run")
     LOGGER.info("started : %s", datetime.now().isoformat(timespec="seconds"))
     LOGGER.info("tools   : %s", args.tools)
     LOGGER.info("cases   : %s", [case.scenario_id for case in cases])

@@ -28,7 +28,7 @@ transactions at all, only polygon metadata. See `polygons_by_radius`.
 
 >>> THIS IS THE LIVE PATH, WITH NO FALLBACK <<<
 ------------------------------------------------
-`NirPriceSignal.execute()` calls this on every request. There is no
+`LivePriceSignal.execute()` calls this on every request. There is no
 offline snapshot fallback: a failure here propagates to `status="error"`.
 
 MEASURED LATENCY: a full `find_comparable_deals()` for a Tel Aviv address
@@ -48,7 +48,7 @@ import logging
 import httpx
 from pydantic import BaseModel, Field
 
-from src.listing_agent.tools.nir_implementations.coordinates import parse_wkt_point
+from src.listing_agent.tools.live_implementations.coordinates import parse_wkt_point
 
 # NOTE: the typed tool errors (`ToolTimeoutError` and friends) are imported
 # lazily inside `_request`, NOT here at module level. They live in

@@ -33,7 +33,7 @@ them:
 - `price_signal` — comparable-sale/price signal for a resolved location.
 
 Each tool has a `mock` implementation (small hardcoded fixtures, the
-default) and a live implementation (`TOOLS_MODE=nir`) that makes real
+default) and a live implementation (`TOOLS_MODE=live`) that makes real
 external HTTP calls (GovMap, OpenStreetMap/Overpass). See
 `docs/contracts.md` for the full per-tool contract.
 
@@ -108,8 +108,7 @@ Key settings (see `.env.example` for the full list):
   variables (`LLMOD_API_KEY`, etc.); no secret is ever committed, logged,
   or included in a traced step.
 - `TOOLS_MODE` — `mock` (default) uses small hardcoded fixture data;
-  `nir` uses the live GovMap/Overpass implementations. (This name will be
-  revisited in a later cleanup pass; it does not affect behavior.)
+  `live` uses the live GovMap/Overpass implementations.
 
 ## Running tests
 

@@ -2,7 +2,7 @@
 
 RUN THIS MANUALLY. It is never imported at request time.
 
-    python -m src.listing_agent.tools.nir_implementations.build_snapshot
+    python -m src.listing_agent.tools.live_implementations.build_snapshot
 
 WHY THIS EXISTS
 ---------------
@@ -52,7 +52,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.listing_agent.tools.nir_implementations.govmap_client import (
+from src.listing_agent.tools.live_implementations.govmap_client import (
     DEAL_TYPE_SECOND_HAND,
     ComparableDeal,
     GovmapClient,
@@ -91,7 +91,7 @@ SEED_ADDRESSES: list[str] = [
 # English aliases per real Hebrew neighbourhood name.
 #
 # Needed because the two `geo_resolver` implementations disagree about
-# language: govmap (and so Nir's real resolver) returns Hebrew, while the
+# language: govmap (and so the live resolver) returns Hebrew, while the
 # existing mock resolver emits English like "florentin". Both must reach
 # the same bucket. The Hebrew name itself is always an alias, added
 # automatically below, so a neighbourhood missing from this map still works

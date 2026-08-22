@@ -46,7 +46,7 @@ while a ZURICH query returns 11 from it.
 There is no way to detect this from a response, so it has to be prevented
 by only ever listing global instances here.
 
-`NirNearbyServices.execute()` calls this live on every request, with no
+`LiveNearbyServices.execute()` calls this live on every request, with no
 offline fallback — that mirror flakiness is exactly why `REQUEST_TIMEOUT_S`
 is generous and why `LocalToolExecutor` gives tool calls a wide timeout
 ceiling (`src/listing_agent/agent/tool_executor/local.py`). A run where

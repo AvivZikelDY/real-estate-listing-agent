@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     mcp_request_timeout_seconds: float = 10.0
 
     # Per-call timeout applied by `LocalToolExecutor` (Phase 14) to every
-    # tool call, regardless of backend. Sized for Nir's live tools: govmap
+    # tool call, regardless of backend. Sized for the live tools: govmap
     # answers in ~0.7-2.9s, but Overpass's mirror fallback can legitimately
     # run tens of seconds (measured once at 41s) when the canonical mirror
     # is overloaded. Kept in step with `DEFAULT_TOOL_TIMEOUT_SECONDS` in

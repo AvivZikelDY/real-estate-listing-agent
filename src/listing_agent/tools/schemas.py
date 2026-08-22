@@ -2,7 +2,7 @@
 
 These models formalize the tool contracts described in
 `docs/contracts.md` §4 and `docs/nir_handoff.md`. They are used by the
-`ToolRegistry`, by both mock implementations and Nir's real
+`ToolRegistry`, by both mock implementations and the live
 implementations, and by `evidence_collector`.
 
 Design principle shared by all three tools: a tool's `ToolResult.status`
@@ -185,7 +185,7 @@ class PriceSignalInput(BaseModel):
     """Input to `price_signal`.
 
     `neighborhood` is retained as an optional field: the current mock
-    dataset (and possibly Nir's real comparables source) key comparison
+    dataset (and possibly the live comparables source) key comparison
     data by neighborhood, typically derived from `geo_resolver`'s output
     alongside `normalized_address`. It is not part of the tool's required
     contract — only `normalized_address`, `asking_price`, and the optional

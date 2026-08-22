@@ -1,4 +1,4 @@
-"""Nir's real `nearby_services` implementation, backed by OpenStreetMap.
+"""Live `nearby_services` implementation, backed by OpenStreetMap.
 
 WHAT THIS TOOL DOES
 -------------------
@@ -34,8 +34,8 @@ no services is simply a successful result that happens to be empty:
 import logging
 from collections import defaultdict
 
-from src.listing_agent.tools.nir_implementations.coordinates import haversine_distance_m
-from src.listing_agent.tools.nir_implementations.overpass_client import (
+from src.listing_agent.tools.live_implementations.coordinates import haversine_distance_m
+from src.listing_agent.tools.live_implementations.overpass_client import (
     OsmPlace,
     OverpassClient,
 )
@@ -73,7 +73,7 @@ _HIGH_QUALITY_MIN_CATEGORIES = 4
 _MEDIUM_QUALITY_MIN_PLACES = 5
 
 
-class NirNearbyServices:
+class LiveNearbyServices:
     """Real `nearby_services` tool backed by OpenStreetMap data."""
 
     # Must match the whitelisted tool name exactly — the registry looks the

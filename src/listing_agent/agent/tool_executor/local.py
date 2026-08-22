@@ -1,12 +1,12 @@
 """`ToolExecutor` backed by the local, in-process `ToolRegistry`.
 
 This is the default/current backend: it runs whichever local tool
-implementations `ToolRegistry` was populated with (mock or Nir's real
+implementations `ToolRegistry` was populated with (mock or live
 implementations, per `TOOLS_MODE` — see `src/listing_agent/tools/dependency.py`).
 It performs no network I/O of its own, but still applies a conservative
 per-call timeout and an at-most-one-retry policy (Phase 14), since a local
-tool implementation may still wrap a slow local computation or, for Nir's
-real implementations later, an outbound HTTP call.
+tool implementation may still wrap a slow local computation or, for the live
+implementations, an outbound HTTP call.
 """
 
 import asyncio
@@ -30,7 +30,7 @@ from src.listing_agent.agent.tool_executor.errors import (
 from src.listing_agent.agent.tool_executor.result import ToolExecutionResult
 from src.listing_agent.tools.registry import ToolRegistry
 
-# Nir's real tool implementations are all live now: govmap (~0.7-2.9s) and
+# The live tool implementations reach real upstreams: govmap (~0.7-2.9s) and
 # Overpass, whose mirror fallback can legitimately run tens of seconds when
 # the canonical mirror is overloaded (measured once at 41s end to end). 120s
 # gives that headroom while still bounding a genuinely hung request.

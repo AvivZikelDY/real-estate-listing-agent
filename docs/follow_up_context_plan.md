@@ -91,7 +91,7 @@ run_agent_pipeline (agent/orchestrator/orchestrator.py)
 `ToolExecutor` (`LocalToolExecutor` today, a future `McpToolExecutor`)
 never changes and never knows reuse exists — `collect_evidence_with_context`
 still calls `tool_executor.execute(call, input_model)` for exactly the
-calls it decided still need to run (see `tests/agent/conversation/test_nir_boundary.py`).
+calls it decided still need to run (see `tests/agent/conversation/test_tool_executor_boundary.py`).
 
 ---
 

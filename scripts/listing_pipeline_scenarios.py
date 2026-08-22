@@ -504,7 +504,7 @@ SCENARIOS: dict[int, Scenario] = {
     #
     # Scenarios 1-10 all describe cooperative, well-formed plans against
     # addresses that resolve cleanly. These five exist to exercise the
-    # paths that only become interesting once `TOOLS_MODE=nir` runs against
+    # paths that only become interesting once `TOOLS_MODE=live` runs against
     # real data (`--live-tools`): a geo_resolver outcome that is valid but
     # unusable, a listing type the validator must reject a tool for, an
     # address outside the Tel Aviv comparables coverage, and planner

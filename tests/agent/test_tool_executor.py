@@ -203,7 +203,7 @@ def test_mcp_tool_executor_satisfies_tool_executor_protocol() -> None:
 
 
 _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "listing_agent"
-_FORBIDDEN_MODULE_SUBSTRINGS = ("mock_implementations", "nir_implementations", "tools.registry")
+_FORBIDDEN_MODULE_SUBSTRINGS = ("mock_implementations", "live_implementations", "tools.registry")
 
 
 def _imported_module_names(path: Path) -> set[str]:

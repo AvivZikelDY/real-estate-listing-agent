@@ -1,4 +1,4 @@
-"""Tests for `NirNearbyServices` — the OpenStreetMap-backed implementation.
+"""Tests for `LiveNearbyServices` — the OpenStreetMap-backed implementation.
 
 Covers requirements 4, 5, 10 and 11 of `docs/nir_handoff.md`.
 
@@ -11,8 +11,8 @@ fall back to anymore. A stub that raises means a genuine technical failure
 import pytest
 
 from src.listing_agent.tools.base import BaseTool
-from src.listing_agent.tools.nir_implementations.nearby_services import NirNearbyServices
-from src.listing_agent.tools.nir_implementations.overpass_client import OsmPlace
+from src.listing_agent.tools.live_implementations.nearby_services import LiveNearbyServices
+from src.listing_agent.tools.live_implementations.overpass_client import OsmPlace
 from src.listing_agent.tools.registry import ToolRegistry
 from src.listing_agent.tools.schemas import NearbyServicesInput
 
@@ -75,7 +75,7 @@ async def test_location_with_services_returns_places_and_categories() -> None:
         _place("בית ספר", "school", _MID, _LON),
         _place("גן", "park", _MID, _LON),
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -93,7 +93,7 @@ async def test_location_with_services_returns_places_and_categories() -> None:
 @pytest.mark.asyncio
 async def test_straight_line_limitation_is_always_present() -> None:
     """Mandatory on every result (docs/nir_handoff.md:136)."""
-    tool = NirNearbyServices(
+    tool = LiveNearbyServices(
         client_factory=_live([_place("סופר", "supermarket", _NEAR, _LON)])
     )
 
@@ -111,7 +111,7 @@ async def test_places_are_sorted_nearest_first() -> None:
         _place("far", "supermarket", _MID, _LON),
         _place("near", "supermarket", _NEAR, _LON),
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -126,7 +126,7 @@ async def test_category_summary_counts_and_nearest_distance() -> None:
         _place("סופר ב", "supermarket", _MID, _LON),
         _place("בית ספר", "school", _MID, _LON),
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -149,7 +149,7 @@ async def test_radius_is_respected() -> None:
         _place("inside", "supermarket", _NEAR, _LON),
         _place("outside", "supermarket", _FAR, _LON),  # ~1.5km away
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -163,7 +163,7 @@ async def test_only_requested_categories_are_returned() -> None:
         _place("סופר", "supermarket", _NEAR, _LON),
         _place("בית ספר", "school", _NEAR, _LON),
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(
         NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500, categories=["school"])
@@ -177,7 +177,7 @@ async def test_only_requested_categories_are_returned() -> None:
 async def test_requested_categories_and_point_are_passed_to_the_live_client() -> None:
     """The live query is scoped to what was actually asked for."""
     stub = _live([_place("בית ספר", "school", _NEAR, _LON)])
-    tool = NirNearbyServices(client_factory=stub)
+    tool = LiveNearbyServices(client_factory=stub)
 
     await tool.execute(
         NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=750, categories=["school", "park"])
@@ -194,7 +194,7 @@ async def test_requested_categories_and_point_are_passed_to_the_live_client() ->
 @pytest.mark.asyncio
 async def test_location_with_no_services_is_ok_and_low_quality() -> None:
     """Empty is a successful result, not an error."""
-    tool = NirNearbyServices(
+    tool = LiveNearbyServices(
         client_factory=_live([_place("far", "supermarket", _FAR, _LON)])
     )
 
@@ -220,7 +220,7 @@ async def test_many_places_across_many_categories_is_high_quality() -> None:
         for category in ("supermarket", "school", "park", "pharmacy")
         for i in range(4)
     ]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -232,7 +232,7 @@ async def test_many_places_across_many_categories_is_high_quality() -> None:
 async def test_many_places_in_one_category_is_not_high_quality() -> None:
     """20 bus stops is a well-mapped bus route, not a well-served area."""
     places = [_place(f"stop {i}", "public_transport", _NEAR, _LON) for i in range(20)]
-    tool = NirNearbyServices(client_factory=_live(places))
+    tool = LiveNearbyServices(client_factory=_live(places))
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON, radius_m=500))
 
@@ -246,7 +246,7 @@ async def test_many_places_in_one_category_is_not_high_quality() -> None:
 @pytest.mark.asyncio
 async def test_unreachable_overpass_returns_error_not_exception() -> None:
     """>>> No fallback left. <<< A technical failure is a genuine error."""
-    tool = NirNearbyServices(client_factory=_DeadOverpass)
+    tool = LiveNearbyServices(client_factory=_DeadOverpass)
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON))
 
@@ -265,7 +265,7 @@ async def test_unexpected_exception_from_client_returns_error_not_exception() ->
         ) -> list[OsmPlace]:
             raise RuntimeError("boom")
 
-    tool = NirNearbyServices(client_factory=_Exploding)
+    tool = LiveNearbyServices(client_factory=_Exploding)
 
     result = await tool.execute(NearbyServicesInput(lat=_LAT, lon=_LON))
 
@@ -277,18 +277,18 @@ async def test_unexpected_exception_from_client_returns_error_not_exception() ->
 
 
 def test_tool_name_matches_the_whitelisted_name() -> None:
-    assert NirNearbyServices().name == "nearby_services"
+    assert LiveNearbyServices().name == "nearby_services"
 
 
 def test_tool_satisfies_the_base_tool_protocol() -> None:
-    assert isinstance(NirNearbyServices(), BaseTool)
+    assert isinstance(LiveNearbyServices(), BaseTool)
 
 
 @pytest.mark.asyncio
 async def test_tool_executes_through_the_registry() -> None:
     registry = ToolRegistry()
     registry.register(
-        NirNearbyServices(
+        LiveNearbyServices(
             client_factory=_live([_place("סופר", "supermarket", _NEAR, _LON)])
         )
     )

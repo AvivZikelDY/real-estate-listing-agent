@@ -500,7 +500,7 @@ async def test_scenario_8_no_recognised_city_skips_geo_gracefully_and_leaves_cac
     None
 ):
     """Phase 2 (D.1): an address naming no city this agent recognises
-    (Nir's no-city refusal, `tool_input_builder.MissingDependencyError`)
+    (the live geo_resolver's no-city refusal, `tool_input_builder.MissingDependencyError`)
     must never crash a stateful turn. The run still completes with
     `geo_resolver` as an honest `status="skipped"` evidence entry (never
     an uncaught exception, never `status="error"`), and nothing is

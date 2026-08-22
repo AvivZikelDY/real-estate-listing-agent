@@ -3,7 +3,7 @@
 These complement the mock-implementation tests: they verify the models'
 own validation rules (bounds, required combinations), JSON serialization
 round-tripping, and that JSON schemas can be generated (useful for
-API/OpenAPI documentation and for Nir's real implementations to validate
+API/OpenAPI documentation and for the live implementations to validate
 against).
 """
 

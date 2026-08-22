@@ -1,4 +1,4 @@
-"""Nir's real `geo_resolver` implementation, backed by govmap autocomplete.
+"""Live `geo_resolver` implementation, backed by govmap autocomplete.
 
 WHAT THIS TOOL DOES
 -------------------
@@ -86,11 +86,11 @@ with the missing house number stated in `limitations`, never as `exact`.
 import logging
 import re
 
-from src.listing_agent.tools.nir_implementations.coordinates import (
+from src.listing_agent.tools.live_implementations.coordinates import (
     parse_wkt_point,
     web_mercator_to_wgs84,
 )
-from src.listing_agent.tools.nir_implementations.govmap_client import GovmapClient
+from src.listing_agent.tools.live_implementations.govmap_client import GovmapClient
 from src.listing_agent.tools.schemas import GeoResolverInput, GeoResolverOutput, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ _STRAIGHT_LINE_NOTE = (
 )
 
 
-class NirGeoResolver:
+class LiveGeoResolver:
     """Real `geo_resolver` tool backed by the govmap address index."""
 
     # Must match the whitelisted tool name exactly — the registry looks the

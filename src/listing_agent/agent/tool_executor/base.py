@@ -2,7 +2,7 @@
 and however a planned tool call actually gets executed.
 
 `evidence_collector` depends only on this interface — never on
-`ToolRegistry`, the mock implementations, or Nir's real implementations
+`ToolRegistry`, the mock implementations, or the live implementations
 directly. This is what lets the transport (in-process local tools today,
 a real MCP server in a future phase) change without touching any
 deterministic agent module.

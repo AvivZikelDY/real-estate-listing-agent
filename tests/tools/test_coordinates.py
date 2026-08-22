@@ -7,7 +7,7 @@ constant, so the suite pins a real, verified point from the live API.
 
 import pytest
 
-from src.listing_agent.tools.nir_implementations.coordinates import (
+from src.listing_agent.tools.live_implementations.coordinates import (
     parse_wkt_point,
     web_mercator_to_wgs84,
     wgs84_to_web_mercator,

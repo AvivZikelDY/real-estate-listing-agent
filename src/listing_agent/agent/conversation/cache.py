@@ -142,7 +142,8 @@ async def collect_evidence_with_context(
         else:
             # `build_tool_input` cannot even be attempted for a cache
             # lookup - most commonly the address names no city this agent
-            # recognises (`MissingDependencyError`, Nir's no-city refusal).
+            # recognises (`MissingDependencyError`, the live geo_resolver's
+            # no-city refusal).
             # No cache key can be computed, so there is nothing to reuse:
             # let the normal `collect_evidence` path run `geo_call` itself,
             # which raises/catches the same `MissingDependencyError` and

@@ -2,7 +2,7 @@
 
 RUN THIS MANUALLY. It is never imported at request time.
 
-    python -m src.listing_agent.tools.nir_implementations.build_poi_snapshot
+    python -m src.listing_agent.tools.live_implementations.build_poi_snapshot
 
 WHY THIS EXISTS
 ---------------
@@ -31,7 +31,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.listing_agent.tools.nir_implementations.overpass_client import OverpassClient
+from src.listing_agent.tools.live_implementations.overpass_client import OverpassClient
 
 # Where the generated file lands: next to this module, so it ships with the
 # package and `nearby_services` can find it by relative path.

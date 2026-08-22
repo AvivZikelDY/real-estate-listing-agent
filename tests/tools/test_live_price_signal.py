@@ -1,6 +1,6 @@
-"""Tests for `NirPriceSignal` — the govmap-backed real implementation.
+"""Tests for `LivePriceSignal` — the govmap-backed real implementation.
 
-Covers requirements 6-11 of `docs/nir_handoff.md` ("Tests Nir must satisfy").
+Covers requirements 6-11 of `docs/nir_handoff.md` ("required tests").
 
 `price_signal` is live-only: every test injects a stub `GovmapClient`, so
 nothing here touches the network, but there is no offline snapshot to fall
@@ -11,8 +11,8 @@ failure (`status="error"`), not a degraded-but-successful answer.
 import pytest
 
 from src.listing_agent.tools.base import BaseTool
-from src.listing_agent.tools.nir_implementations.govmap_client import ComparableDeal
-from src.listing_agent.tools.nir_implementations.price_signal import NirPriceSignal
+from src.listing_agent.tools.live_implementations.govmap_client import ComparableDeal
+from src.listing_agent.tools.live_implementations.price_signal import LivePriceSignal
 from src.listing_agent.tools.registry import ToolRegistry
 from src.listing_agent.tools.schemas import PriceSignalInput
 
@@ -67,7 +67,7 @@ async def test_purchase_listing_returns_compared_with_correct_math() -> None:
     # Five deals, all 100 sqm, priced so price-per-sqm is exactly
     # 40k, 45k, 50k, 55k, 60k. Median is therefore exactly 50,000.
     deals = [_comparable(p * 100, 100) for p in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     # Listing: 5,500,000 for 100 sqm -> 55,000/sqm, i.e. 10% above the median.
     result = await tool.execute(
@@ -96,7 +96,7 @@ async def test_purchase_listing_returns_compared_with_correct_math() -> None:
 async def test_compared_result_always_discloses_it_is_not_an_appraisal() -> None:
     """The appraisal disclaimer is mandatory on every result (handoff:167)."""
     deals = [_comparable(p * 100, 100) for p in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -116,7 +116,7 @@ async def test_compared_result_always_discloses_it_is_not_an_appraisal() -> None
 async def test_underpriced_listing_reports_negative_deviation() -> None:
     """A listing below the local median must read as a negative deviation."""
     deals = [_comparable(p * 100, 100) for p in (40_000, 45_000, 50_000, 55_000, 60_000)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     # 4,000,000 for 100 sqm -> 40,000/sqm, 20% below the 50,000 median.
     result = await tool.execute(
@@ -138,7 +138,7 @@ async def test_underpriced_listing_reports_negative_deviation() -> None:
 @pytest.mark.asyncio
 async def test_live_data_is_used() -> None:
     deals = [_comparable(p * 100, 100) for p in (60_000, 62_000, 64_000, 66_000, 68_000)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -160,7 +160,7 @@ async def test_live_data_is_used() -> None:
 async def test_live_lookup_receives_the_normalized_address() -> None:
     """The client locates the address's own parcel, so it needs the address."""
     stub = _live([_comparable(p * 100, 100) for p in (60_000, 62_000, 64_000)])
-    tool = NirPriceSignal(client_factory=stub)
+    tool = LivePriceSignal(client_factory=stub)
 
     await tool.execute(
         PriceSignalInput(
@@ -177,7 +177,7 @@ async def test_live_lookup_receives_the_normalized_address() -> None:
 @pytest.mark.asyncio
 async def test_unreachable_govmap_returns_error_not_a_degraded_answer() -> None:
     """>>> No fallback left. <<< A technical failure is a genuine error."""
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -201,7 +201,7 @@ async def test_unexpected_exception_from_client_returns_error_not_exception() ->
         async def find_comparable_deals(self, address: str) -> list[ComparableDeal]:
             raise RuntimeError("boom")
 
-    tool = NirPriceSignal(client_factory=_Exploding)
+    tool = LivePriceSignal(client_factory=_Exploding)
 
     # The assertion is as much that this line does not raise as anything else.
     result = await tool.execute(
@@ -220,7 +220,7 @@ async def test_unexpected_exception_from_client_returns_error_not_exception() ->
 @pytest.mark.asyncio
 async def test_empty_live_result_reports_no_comparable_data() -> None:
     """govmap answering "no recorded sales here" is a real, successful answer."""
-    tool = NirPriceSignal(client_factory=_live([]))
+    tool = LivePriceSignal(client_factory=_live([]))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -241,7 +241,7 @@ async def test_empty_live_result_reports_no_comparable_data() -> None:
 async def test_rental_is_skipped_before_any_network_call() -> None:
     """The rental check must short-circuit before any data source is touched."""
     stub = _live([_comparable(5_000_000, 100)])
-    tool = NirPriceSignal(client_factory=stub)
+    tool = LivePriceSignal(client_factory=stub)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -261,7 +261,7 @@ async def test_rental_is_skipped_before_any_network_call() -> None:
 
 @pytest.mark.asyncio
 async def test_missing_area_reports_insufficient_data() -> None:
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -281,7 +281,7 @@ async def test_missing_area_reports_insufficient_data() -> None:
 
 @pytest.mark.asyncio
 async def test_missing_asking_price_reports_insufficient_data() -> None:
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -300,7 +300,7 @@ async def test_missing_asking_price_reports_insufficient_data() -> None:
 @pytest.mark.asyncio
 async def test_both_fields_missing_lists_both() -> None:
     """`missing_fields` must list exactly what is missing — both, here."""
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -323,7 +323,7 @@ async def test_both_fields_missing_lists_both() -> None:
 async def test_too_few_comparables_reports_no_comparable_data() -> None:
     """A median over 2 sales is not a signal, so it must not be published."""
     deals = [_comparable(5_000_000, 100), _comparable(5_100_000, 100)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -346,7 +346,7 @@ async def test_implausible_price_per_sqm_rows_are_discarded() -> None:
     # rows survived, the median would be wildly different.
     deals = [_comparable(p * 100, 100) for p in (50_000, 52_000, 54_000)]
     deals += [_comparable(5_000_000, 1), _comparable(100, 100)]
-    tool = NirPriceSignal(client_factory=_live(deals))
+    tool = LivePriceSignal(client_factory=_live(deals))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -368,7 +368,7 @@ async def test_stale_deals_are_excluded_from_the_comparison() -> None:
     """Old sales must not drag the median (the Neve Tzedek 2019 problem)."""
     recent = [_comparable(p * 100, 100, "2026-03-01T00:00:00.000Z") for p in [60_000] * 10]
     stale = [_comparable(p * 100, 100, "2019-05-01T00:00:00.000Z") for p in [10_000] * 10]
-    tool = NirPriceSignal(client_factory=_live(recent + stale))
+    tool = LivePriceSignal(client_factory=_live(recent + stale))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -392,7 +392,7 @@ async def test_stale_deals_are_excluded_from_the_comparison() -> None:
 
 @pytest.mark.asyncio
 async def test_rental_listing_is_skipped() -> None:
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -412,7 +412,7 @@ async def test_rental_listing_is_skipped() -> None:
 @pytest.mark.asyncio
 async def test_rental_is_skipped_even_when_everything_else_is_missing() -> None:
     """Skipping must win over the insufficient-data check, not the reverse."""
-    tool = NirPriceSignal(client_factory=_DeadGovmap)
+    tool = LivePriceSignal(client_factory=_DeadGovmap)
 
     result = await tool.execute(
         PriceSignalInput(
@@ -431,11 +431,11 @@ async def test_rental_is_skipped_even_when_everything_else_is_missing() -> None:
 
 
 def test_tool_name_matches_the_whitelisted_name() -> None:
-    assert NirPriceSignal().name == "price_signal"
+    assert LivePriceSignal().name == "price_signal"
 
 
 def test_tool_satisfies_the_base_tool_protocol() -> None:
-    assert isinstance(NirPriceSignal(), BaseTool)
+    assert isinstance(LivePriceSignal(), BaseTool)
 
 
 @pytest.mark.asyncio
@@ -443,7 +443,7 @@ async def test_tool_executes_through_the_registry() -> None:
     """Registration and execution must work through the real `ToolRegistry`."""
     deals = [_comparable(p * 100, 100) for p in (50_000, 52_000, 54_000)]
     registry = ToolRegistry()
-    registry.register(NirPriceSignal(client_factory=_live(deals)))
+    registry.register(LivePriceSignal(client_factory=_live(deals)))
 
     result = await registry.execute(
         "price_signal",
@@ -470,7 +470,7 @@ async def test_similar_sized_comparables_are_preferred() -> None:
     # 90,000/sqm. A 100 sqm listing should be judged against the former.
     small = [_comparable(50_000 * 100, 100 + i) for i in range(6)]
     large = [_comparable(90_000 * 300, 300 + i) for i in range(6)]
-    tool = NirPriceSignal(client_factory=_live(small + large))
+    tool = LivePriceSignal(client_factory=_live(small + large))
 
     result = await tool.execute(
         PriceSignalInput(
@@ -494,7 +494,7 @@ async def test_falls_back_to_all_sizes_when_band_is_too_thin() -> None:
     # Only 2 deals near 100 sqm; the rest are much larger.
     small = [_comparable(50_000 * 100, 100), _comparable(50_000 * 100, 105)]
     large = [_comparable(90_000 * 300, 300 + i) for i in range(6)]
-    tool = NirPriceSignal(client_factory=_live(small + large))
+    tool = LivePriceSignal(client_factory=_live(small + large))
 
     result = await tool.execute(
         PriceSignalInput(

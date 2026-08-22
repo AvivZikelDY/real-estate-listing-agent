@@ -265,7 +265,7 @@ def test_module_never_imports_report_writer_or_execution_internals() -> None:
     import_text = "".join(import_lines)
     assert "report_writer" not in import_text
     assert "McpToolExecutor" not in import_text
-    assert "nir_implementations" not in import_text
+    assert "live_implementations" not in import_text
 
 
 @pytest.mark.asyncio
