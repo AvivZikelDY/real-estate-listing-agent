@@ -19,3 +19,5 @@ src/listing_agent/tools/live_implementations/test_results/
 # Scratch request bodies for POST /api/execute, and their saved responses.
 my_listing.json
 response.txt
+.vercel
+.env*
