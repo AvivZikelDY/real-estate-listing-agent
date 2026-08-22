@@ -448,6 +448,60 @@ def test_price_signal_kept_when_buyer_prompt_has_comparative_intent() -> None:
     assert price_fact_claim.id not in (price_call.supports_claim_ids or [])
 
 
+def test_price_signal_kept_for_colloquial_excellent_price_phrasing() -> None:
+    """Colloquial price-praise phrasing ("מחיר מצוין" - excellent price) is
+    comparative-price intent too, not just "מציאה" (bargain): the raw
+    listing text itself is the current turn's buyer_prompt for a plain
+    fast_claim_triage submission, so this phrasing must independently
+    justify `price_signal` via `prompt_has_comparative_price_intent`, the
+    same as an explicit "fair"/"bargain" question does."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=2_400_000,
+            rooms=3.5,
+            sqm=84,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מחיר מצוין!", type="factual", category="price")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(plan, buyer_prompt="דירה למכירה, מחיר מצוין!")
+
+    assert "price_signal" in {call.tool for call in validated.tool_calls}
+
+
+def test_generic_excellent_claim_without_price_reference_does_not_justify_price_signal() -> None:
+    """"מצוין"/"מעולה" alone (no accompanying "מחיר"/price reference) must
+    NOT count as comparative-price intent - it is a generic adjective used
+    for anything ("מיזוג אוויר מצוין" - excellent AC), and must not smuggle
+    price_signal in via an unrelated claim."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=2_400_000,
+            rooms=3.5,
+            sqm=84,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מיזוג אוויר מצוין", type="factual", category="condition")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(plan, buyer_prompt="דירה למכירה, מיזוג אוויר מצוין")
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
 def test_price_comparison_claim_not_derived_when_already_present() -> None:
     plan = TriagePlan(
         property_details=PropertyDetails(

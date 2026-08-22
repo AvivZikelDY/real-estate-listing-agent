@@ -40,15 +40,36 @@ ToolInputModel = GeoResolverInput | NearbyServicesInput | PriceSignalInput
 # WHY SUBSTRING AND NOT WORD MATCHING: Hebrew one-letter prefixes attach
 # directly to the word ("בתל אביב" = "in Tel Aviv"), so there is no word
 # boundary to anchor on.
-_CITY_NAMES: tuple[str, ...] = (
+#
+# Each key is a spelling actually seen naming Tel Aviv in listing text; the
+# value is the string `extract_city_hint` returns for it. The three original
+# spellings map to themselves (unchanged, canonical) and are also what
+# `geo_resolver` folds into its govmap query text. The common Hebrew
+# abbreviation "ת\"א" is recognised too - but only maps to the canonical
+# "תל אביב", never returned verbatim: govmap's free-text search is indexed
+# on the full municipality name, so echoing the abbreviation back into the
+# query would make it LESS resolvable, not more, defeating the point of a
+# hint. Never the bare two letters "תא" alone, which is an ordinary Hebrew
+# word ("cell"/"compartment", as in "תא טלפון" - phone booth) and would
+# false-positive on unrelated listings. The abbreviation entries below pair
+# it with each gershayim variant actually seen in the wild: the ASCII quote
+# most keyboards produce, the dedicated Hebrew gershayim codepoint, a curly
+# "smart quote" some word processors substitute, and the double-apostrophe
+# some people type by hand.
+_CITY_NAMES: dict[str, str] = {
     # Tel Aviv itself, including the hyphenated spelling govmap returns.
-    "תל אביב",
-    "תל-אביב",
-    "Tel Aviv",
-)
+    "תל אביב": "תל אביב",
+    "תל-אביב": "תל-אביב",
+    "Tel Aviv": "Tel Aviv",
+    'ת"א': "תל אביב",
+    "ת״א": "תל אביב",
+    "ת”א": "תל אביב",
+    "ת''א": "תל אביב",
+}
 
-# Longest first, kept for determinism even though only one city remains;
-# the secondary alphabetical key exists only to keep the order reproducible.
+# Longest first (matched against the alias, not the canonical value it maps
+# to), kept for determinism; the secondary alphabetical key exists only to
+# keep the order reproducible.
 _KNOWN_CITY_HINTS: tuple[str, ...] = tuple(
     sorted(_CITY_NAMES, key=lambda city: (-len(city), city))
 )
@@ -144,18 +165,20 @@ def extract_city_hint(raw_address: str | None) -> str | None:
     Purely deterministic substring matching against a fixed list - never
     guessed, never inferred beyond what the address text itself states.
 
-    The match is case-insensitive and the value returned is the list's own
-    canonical spelling rather than the caller's: "TEL AVIV" yields
-    "Tel Aviv". The comparison used to be case-sensitive despite the
-    comment claiming otherwise, which cost little while the hint was
-    optional and costs a whole run now that its absence stops one.
+    The match is case-insensitive and the value returned is `_CITY_NAMES`'s
+    own canonical spelling for the matched alias, not the caller's literal
+    text: "TEL AVIV" yields "Tel Aviv", and the abbreviation "ת\"א" yields
+    "תל אביב" rather than being echoed back verbatim (see `_CITY_NAMES`).
+    The comparison used to be case-sensitive despite the comment claiming
+    otherwise, which cost little while the hint was optional and costs a
+    whole run now that its absence stops one.
     """
     if not raw_address:
         return None
     lowered = raw_address.lower()
-    for city in _KNOWN_CITY_HINTS:
-        if _names_city(lowered, city.lower()):
-            return city
+    for alias in _KNOWN_CITY_HINTS:
+        if _names_city(lowered, alias.lower()):
+            return _CITY_NAMES[alias]
     return None
 
 

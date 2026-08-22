@@ -32,6 +32,25 @@ def test_extract_city_hint_finds_hyphenated_tel_aviv() -> None:
     assert extract_city_hint("דיזנגוף 100, תל-אביב") == "תל-אביב"
 
 
+def test_extract_city_hint_recognizes_taf_alef_abbreviation_variants() -> None:
+    """The common Hebrew abbreviation "ת\"א" (Tel Aviv), in each gershayim
+    variant actually seen in listing text, must be recognized - but always
+    normalized to the canonical "תל אביב", never echoed back verbatim: the
+    abbreviation is unresolvable to govmap's free-text search, unlike the
+    full municipality name."""
+    assert extract_city_hint('רוטשילד 10, ת"א') == "תל אביב"
+    assert extract_city_hint("רוטשילד 10, ת״א") == "תל אביב"
+    assert extract_city_hint("רוטשילד 10, ת”א") == "תל אביב"
+    assert extract_city_hint("רוטשילד 10, ת''א") == "תל אביב"
+
+
+def test_extract_city_hint_rejects_bare_taf_alef_without_punctuation() -> None:
+    """Bare "תא" (no gershayim) is an ordinary Hebrew word ("cell" /
+    "compartment", e.g. "תא טלפון" - phone booth) and must not be treated
+    as naming the city."""
+    assert extract_city_hint("רוטשילד 10, תא טלפון בקומת הכניסה") is None
+
+
 def test_extract_city_hint_returns_none_when_no_known_city() -> None:
     assert extract_city_hint("Some unknown street 5") is None
     assert extract_city_hint(None) is None

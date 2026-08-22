@@ -374,6 +374,8 @@ _COMPARATIVE_JUDGMENT_MARKERS: tuple[str, ...] = (
     "over priced",
     "good deal",
     "good price",
+    "excellent price",
+    "great price",
     "market",
     "compare",
     "compared",
@@ -392,6 +394,18 @@ _COMPARATIVE_JUDGMENT_MARKERS: tuple[str, ...] = (
     "לעומת",
     "ביחס",
     "מציאה",
+    # Colloquial price-praise adjectives ("excellent"/"great" applied to
+    # price) - deliberately NOT added to `_COMPARATIVE_PRICE_MARKERS`
+    # above, because unlike "מציאה" (bargain) these are generic adjectives
+    # applied to anything ("מיזוג אוויר מצוין" - excellent AC, "מצב מצוין" -
+    # excellent condition). Listed only here, where they count solely when
+    # a `_PRICE_REFERENCE_MARKERS` word ("מחיר"/"price"/"cost") is ALSO
+    # present in the same prompt, so "מחיר מצוין" (excellent price) is
+    # recognised while an unrelated "excellent" claim about the apartment
+    # itself is not.
+    "מצוין",
+    "מצויין",
+    "מעולה",
 )
 
 

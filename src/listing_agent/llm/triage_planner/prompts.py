@@ -50,7 +50,8 @@ it applies: "rooms", "condition", "address", "size_sqm", "price", \
 "nearby_amenities", "price_comparison", "transaction_structure". Use \
 "price" only for a plain statement of the asking price itself; use \
 "price_comparison" for a claim that the price is a bargain, below/above \
-market, or otherwise compares to other listings. Use \
+market, an excellent/great price/value (e.g. "מחיר מצוין", "מחיר מעולה"), \
+or otherwise compares to other listings. Use \
 "transaction_structure" for commercial/legal transaction terms such as a \
 rent-then-purchase arrangement, a purchase option, or similar future \
 commitments.
@@ -98,8 +99,8 @@ and sqm are both present: having those inputs is a precondition for the \
 tool, never a reason to run it. Select price_signal under \
 fast_claim_triage only when a listing claim itself is an explicit, \
 non-derived price comparison (category "price_comparison" - the listing \
-itself says the price is a bargain, or below/above market, not merely \
-stating the asking price).
+itself says the price is a bargain, an excellent/great price, or \
+below/above market, not merely stating the asking price).
 - general_question selects nothing on its own; select a tool only if the \
 question itself asks for what that tool provides.
 - price_signal must NEVER be selected for rental listings.
