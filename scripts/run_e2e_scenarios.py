@@ -1,23 +1,26 @@
-"""Run ten fixed listings end to end through `POST /api/execute` and write a
-baseline result file.
+"""End-to-End Acceptance Scenarios.
+
+Runs a fixed set of listings end to end through `POST /api/execute` (the
+public HTTP API, exactly as a user/grader would call it) and writes a
+generated result file for manual review.
 
 WHY THIS EXISTS
 ---------------
-Nir's tools and Aviv's pipeline are developed apart and integrated late. When
-they meet, "it behaves differently" is easy to say and hard to localise: a
-changed report could come from the planner, the validator, the tool inputs,
-a tool, or the report writer. This script pins what the whole chain produces
-for ten deliberately chosen listings, in one committed file, so the two sides
-can diff the same thing instead of describing it to each other.
+Two LLM calls sit in the middle of this pipeline (`triage_planner`,
+`report_writer`), plus several deterministic stages and three tools. A
+regression can come from any of them. This script pins what the whole
+chain produces for a fixed, deliberately chosen set of listings so a
+change can be reviewed against concrete, reproducible behavior instead of
+re-describing it from scratch each time.
 
-Each scenario is ONE real `POST /api/execute` against a running app - the
-same entry point a user hits. Nothing is stubbed.
+Each scenario is ONE real `POST /api/execute` against a running app.
+Nothing is stubbed.
 
 WHAT TO COMPARE, AND WHAT TO IGNORE
 -----------------------------------
-Two LLM calls sit in this chain (`triage_planner`, `report_writer`), so no
-run reproduces another exactly. The file separates the two kinds of output
-for that reason:
+Because two LLM calls sit in this chain, no run reproduces another
+exactly. The result file separates the two kinds of output for that
+reason:
 
   * STABLE - extracted fields, planned tools, the tool inputs those calls
     build, tool outcomes, coordinates, category lists. Differences here are
@@ -28,7 +31,7 @@ for that reason:
 
 Every scenario also carries explicit checks. A FAIL is a rule the system is
 supposed to enforce deterministically (e.g. `price_signal` must never run on
-a rental), and is worth investigating whichever side you are on.
+a rental), and is worth investigating.
 
 TOOL INPUTS ARE RECONSTRUCTED, NOT GUESSED
 ------------------------------------------
@@ -47,7 +50,7 @@ Start the app first (this script never launches it):
 
     --base-url URL   default http://127.0.0.1:8000
     --only 04,07     run a subset by scenario number
-    --out-dir DIR    default docs/e2e_baseline
+    --out-dir DIR    default .tmp/e2e_acceptance (generated, gitignored)
     --rtl            print Hebrew right-to-left in the CONSOLE (the result
                      file always keeps the real text, so it stays diffable)
 
@@ -85,7 +88,7 @@ from src.listing_agent.agent.tool_input_builder import (  # noqa: E402
 from src.listing_agent.tools.schemas import GeoResolverOutput  # noqa: E402
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-DEFAULT_OUT_DIR = "docs/e2e_baseline"
+DEFAULT_OUT_DIR = ".tmp/e2e_acceptance"
 
 # One run can legitimately take minutes; the server's own deadline is 290s.
 REQUEST_TIMEOUT_S = 300.0
@@ -158,14 +161,21 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         name="04_normal",
-        purpose="An ordinary, complete purchase listing. The baseline case.",
+        purpose="An ordinary, complete purchase listing with no comparative question.",
         prompt=(
             "דיזנגוף 50, תל אביב. דירת 3 חדרים, 85 מ\"ר, קומה 3 מתוך 5, מעלית "
             'ומרפסת. מחיר מבוקש 4,200,000 ש"ח.'
         ),
-        expect_tools={"geo_resolver", "price_signal"},
+        expect_tools={"geo_resolver"},
+        forbid_tools={"price_signal"},
         expect_geo_outcome="resolved",
-        notes="If anything here differs, suspect the integration before the listing.",
+        notes=(
+            "A plain asking price + sqm, with no comparative buyer question and "
+            "no comparative listing claim, does not by itself justify "
+            "`price_signal` (see `_drop_unjustified_price_signal`). If anything "
+            "here differs, suspect the routing/validator layer before the "
+            "listing."
+        ),
     ),
     Scenario(
         name="05_nearby_claims",
@@ -193,7 +203,10 @@ SCENARIOS: list[Scenario] = [
         ),
         expect_tools={"geo_resolver", "price_signal"},
         expect_geo_outcome="resolved",
-        notes="An explicit question should reach the same plan as the implicit one in 04.",
+        notes=(
+            "An explicit comparative price question justifies `price_signal` "
+            "(contrast with 04, which has none)."
+        ),
     ),
     Scenario(
         name="07_q_supermarket",
@@ -292,9 +305,8 @@ def _step(response: dict, name: str) -> dict:
 
 
 def _planner_output(response: dict) -> dict:
-    # A3 compatibility: `/api/execute` now serializes steps to the public
-    # {module, prompt, response} shape (the old `detail.response` nesting
-    # is gone). Full scenario modernization is deferred to B3a.
+    # `/api/execute` serializes steps to the public {module, prompt, response}
+    # shape (see `execute_step_serializer.build_public_steps`).
     return _step(response, "triage_planner").get("response") or {}
 
 
@@ -304,8 +316,6 @@ def _bundle(response: dict) -> dict:
     It is the only place the post-validation plan and every tool result are
     visible together, which is exactly what this file needs to record.
     """
-    # A3 compatibility: read the public `prompt.user_payload` directly
-    # instead of the old `detail.prompt.user_payload` nesting.
     prompt = _step(response, "report_writer").get("prompt") or {}
     return prompt.get("user_payload") or {}
 
@@ -651,20 +661,22 @@ def main() -> int:
         elif geo_state != "not_planned":
             print(f"      geo: {geo_state}")
 
-    out_dir = _REPO_ROOT / args.out_dir
+    out_dir = Path(args.out_dir)
+    if not out_dir.is_absolute():
+        out_dir = _REPO_ROOT / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    md_path = out_dir / f"e2e_baseline_{stamp}.md"
-    json_path = out_dir / f"e2e_baseline_{stamp}.json"
+    md_path = out_dir / f"e2e_acceptance_{stamp}.md"
+    json_path = out_dir / f"e2e_acceptance_{stamp}.json"
 
     total_failures = sum(f for _, _, f, _ in summary)
     header: list[str] = [
-        f"# End-to-end scenario baseline - {stamp}",
+        f"# End-to-End Acceptance Scenarios - {stamp}",
         "",
-        "Ten fixed listings, each one real `POST /api/execute` against the running",
-        "app with live tools. Generated by `scripts/run_e2e_scenarios.py`.",
+        f"{len(SCENARIOS)} fixed listings, each one real `POST /api/execute` against",
+        "the running app with live tools. Generated by `scripts/run_e2e_scenarios.py`.",
         "",
-        "**How to use this file:** re-run the script after integrating and diff the",
+        "**How to use this file:** re-run the script after a change and diff the",
         "two. Compare the STABLE block of each scenario - extracted fields, planned",
         "tools, built tool inputs, geo outcome and coordinates. Ignore differences",
         "in claim wording, claim ids, `buyer_goal` and report prose: two LLM calls",
@@ -692,8 +704,14 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"\nWrote {md_path.relative_to(_REPO_ROOT)}")
-    print(f"Wrote {json_path.relative_to(_REPO_ROOT)}  (full responses)")
+    def _display_path(path: Path) -> str:
+        try:
+            return str(path.relative_to(_REPO_ROOT))
+        except ValueError:
+            return str(path)
+
+    print(f"\nWrote {_display_path(md_path)}")
+    print(f"Wrote {_display_path(json_path)}  (full responses)")
     print(f"{total_failures} failed check(s) in total.")
     return 0
 
