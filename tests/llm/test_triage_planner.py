@@ -94,3 +94,39 @@ async def test_subjective_only_listing_triggers_no_tools() -> None:
         "rooms",
         "sqm",
     }
+
+
+# --- Stage 4.2: persona-intent-preservation prompt contract ----------------
+#
+# NOTE: these are prompt-content contract tests only - they prove the
+# instruction text is present in the system prompt, not that a real LLM call
+# will obey it. Live behavioral verification is Stage 4.3.
+
+
+def test_system_prompt_maps_uncovered_persona_suitability_to_general_question() -> None:
+    """Stage 4.1 regression: family_suitability must apply only when the
+    CURRENT prompt itself asks about family/children/kids. A suitability
+    question about another persona (students, roommates, elderly, singles,
+    couples) must fall through to general_question, never be silently
+    converted to family_suitability, and no new buyer_goal may be invented
+    for it."""
+    from src.listing_agent.llm.triage_planner.prompts import TRIAGE_PLANNER_SYSTEM_PROMPT
+
+    prompt = TRIAGE_PLANNER_SYSTEM_PROMPT
+    assert "family_suitability applies ONLY when the CURRENT user prompt explicitly" in prompt
+    assert "must NOT be silently converted to family_suitability" in prompt
+    assert "students, roommates, elderly people, singles, couples" in prompt
+    assert "Do not invent a new buyer_goal value for it" in prompt
+
+
+def test_system_prompt_gives_concrete_students_vs_family_followup_example() -> None:
+    """Stage 4.1 regression: previous focus "park, supermarket" followed by
+    "האם מתאימה לסטודנטים?" must resolve to general_question, not
+    family_suitability - explicit current-turn intent always overrides
+    previous conversation focus."""
+    from src.listing_agent.llm.triage_planner.prompts import TRIAGE_PLANNER_SYSTEM_PROMPT
+
+    prompt = TRIAGE_PLANNER_SYSTEM_PROMPT
+    assert '"park, supermarket"' in prompt
+    assert "האם מתאימה לסטודנטים?" in prompt
+    assert "buyer_goal must be general_question, NOT family_suitability" in prompt

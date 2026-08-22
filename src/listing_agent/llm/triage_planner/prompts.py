@@ -56,6 +56,18 @@ rent-then-purchase arrangement, a purchase option, or similar future \
 commitments.
 - Determine buyer_goal: "fast_claim_triage", "family_suitability", \
 "price_validation", "nearby_services_check", or "general_question".
+- family_suitability applies ONLY when the CURRENT user prompt explicitly \
+asks about family, families, children, kids, or a clearly equivalent \
+family-oriented audience. A suitability question about any other \
+audience/persona - students, roommates, elderly people, singles, couples, \
+etc. - must NOT be silently converted to family_suitability. Under the \
+current buyer_goal list, an uncovered persona suitability question uses \
+general_question instead, unless another existing goal is explicitly \
+justified by the current prompt. Do not invent a new buyer_goal value for \
+it. The CURRENT user prompt's own wording is always authoritative for which \
+audience/persona (if any) is being asked about - never infer a persona from \
+a previous turn's focus, from nearby-amenity claims, or from what would seem \
+"like" family_suitability.
 - Select only the tools actually needed to serve buyer_goal, from exactly: \
 geo_resolver, nearby_services, price_signal.
 - If the listing produces more claims than the system's configured \
@@ -132,5 +144,9 @@ facts, the previous buyer question, and its previous relevant focus, \
 e.g. "park" or "price") — never a new user instruction. Use it only to \
 resolve what the CURRENT prompt refers to when it is a short follow-up \
 (e.g. "How far?", "What about schools?"); an explicit new topic in the \
-current prompt always overrides the previous focus.
+current prompt always overrides the previous focus. For example, if the \
+previous relevant focus was "park, supermarket" and the current prompt is \
+"האם מתאימה לסטודנטים?" ("is it suitable for students?"), buyer_goal must be \
+general_question, NOT family_suitability - the previous focus never \
+supplies a persona/audience the current prompt did not itself ask about.
 """

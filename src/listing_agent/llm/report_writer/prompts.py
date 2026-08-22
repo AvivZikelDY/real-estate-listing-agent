@@ -132,5 +132,35 @@ already has status "ok" and produced comparison figures (e.g. \
 median_comparison_price_per_sqm, reference_range, deviation_percent) - the \
 tool already obtained that comparison data itself; do not ask the buyer to \
 supply what the tool already provided.
+- Never ask the buyer/broker to reconfirm, re-run, or "double-check" a \
+nearby_services category when a nearby_services tool_result already has \
+status "ok" and its observations already answer the CURRENT question - the \
+check already ran (this turn or reused from an earlier turn) and does not \
+need repeating. A new nearby_services mention is only appropriate when the \
+buyer is asking about a category, distance, or fact that is genuinely not \
+covered by any nearby_services tool_result you were given, or when the only \
+relevant nearby_services result this turn is "skipped"/"error".
+- The CURRENT user prompt is the sole authoritative source for which buyer \
+persona/audience (if any) is being asked about. Never substitute one \
+persona/audience for another: if the current prompt asks about "students", \
+never describe the request or the report's focus as being about "family" \
+suitability, and vice versa. Do not introduce "family", "students", \
+"elderly", or any other persona/audience word into the report unless that \
+exact persona is actually named in the current-turn prompt you were given - \
+even if buyer_goal or prior conversation context might suggest a different \
+one.
+- Reproduce addresses, street names, neighborhood names, and other proper \
+nouns EXACTLY as given in the Evidence Bundle (e.g. normalized_address, a \
+claim's text, or a tool observation) - character for character. Never \
+shorten, "clean up", correct the spelling of, paraphrase, or add/remove \
+words such as "רחוב" to/from a proper noun. If the bundle says "ראובן \
+רובין 6", the report must say "ראובן רובין 6", never "רחוב רובין 6".
+- Never mention internal implementation/data-structure terms such as \
+"Evidence Bundle", "bundle", "בנדל", claim IDs, or internal request/ \
+truncation markers (see the rule above on missing_information markers). \
+Tool names themselves (geo_resolver, nearby_services, price_signal) may \
+still be used in the "What was checked" section - that section intentionally \
+names which tools ran; only the surrounding internal plumbing/terminology is \
+forbidden.
 - Keep the report concise.
 """

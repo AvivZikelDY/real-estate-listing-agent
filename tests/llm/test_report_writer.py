@@ -292,3 +292,58 @@ def test_compact_bundle_executed_this_turn_result_is_correctly_flagged() -> None
         assert entry["tool"] in payload["executed_tools"]
         assert entry["status"] == "ok"
 
+
+# --- Stage 4.2: report_writer defense-in-depth safeguards ------------------
+#
+# NOTE: these are prompt-content contract tests only - they prove the
+# instruction text is present in the deployed system prompt, not that a real
+# LLM call will obey it. Live behavioral verification is Stage 4.3.
+
+
+def test_system_prompt_forbids_persona_substitution() -> None:
+    """Stage 4.1 regression (students answered as family): the report must
+    never substitute one buyer persona/audience for another, and the
+    current-turn prompt is the sole authoritative source for the persona."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "sole authoritative source for which buyer persona/audience" in prompt
+    assert "Never substitute one persona/audience for another" in prompt
+    assert '"students"' in prompt and '"family"' in prompt
+
+
+def test_system_prompt_preserves_proper_nouns_verbatim() -> None:
+    """Stage 4.1 regression ("ראובן רובין 6" -> "רחוב רובין 6"): addresses,
+    street names, and other proper nouns must be reproduced exactly as given,
+    never shortened, "cleaned up", or corrected."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "Reproduce addresses, street names, neighborhood names" in prompt
+    assert '"ראובן רובין 6"' in prompt
+    assert 'never "רחוב רובין 6"' in prompt
+
+
+def test_system_prompt_forbids_redundant_nearby_services_rerun_recommendation() -> None:
+    """Stage 4.1 finding: when a nearby_services result already has
+    status "ok" and already answers the current question, the report must
+    not recommend re-running/re-confirming it - only a genuinely uncovered
+    category, distance, or fact justifies mentioning nearby_services again."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert 're-run, or "double-check" a' in prompt
+    assert "nearby_services category when a nearby_services tool_result already has" in prompt
+
+
+def test_system_prompt_forbids_internal_evidence_bundle_terminology() -> None:
+    """Stage 4.1 finding: the report must never expose implementation/
+    data-structure terms such as "Evidence Bundle" or "bundle"/"בנדל", while
+    tool names themselves remain intentionally visible in "What was
+    checked"."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert '"Evidence Bundle", "bundle", "בנדל"' in prompt
+    assert "Tool names themselves (geo_resolver, nearby_services, price_signal) may" in prompt
+
