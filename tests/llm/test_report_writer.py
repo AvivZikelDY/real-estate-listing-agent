@@ -187,3 +187,108 @@ def test_system_prompt_avoids_redundant_address_and_comparable_sales_requests() 
     prompt = REPORT_WRITER_SYSTEM_PROMPT
     assert "reconfirm, restate, or provide the address" in prompt
     assert "provide comparable sale prices, market" in prompt
+
+
+# --- Stage 1.8: skipped-this-turn must never be mislabeled "reused" --------
+
+
+def test_system_prompt_never_labels_a_skipped_result_as_reused() -> None:
+    """Stage 1.5-1.8 regression (the fresh-conversation A3 rerun): a
+    `status == "skipped"` (or "error") tool_results entry absent from
+    `executed_tools` was attempted and skipped/failed THIS turn - it must
+    never be described as "reused from an earlier turn" or "already checked
+    earlier in this conversation", even in a stateless/first-turn request
+    with no earlier turn at all. Only a `status == "ok"` entry absent from
+    `executed_tools` is genuinely reused evidence from a prior turn."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert 'status "skipped" or "error" is NEVER "reused from an earlier turn"' in prompt
+    assert 'A status "ok" entry absent from' in prompt
+    assert "was reused from an earlier turn of this conversation" in prompt
+
+
+def test_compact_bundle_skipped_this_turn_result_carries_status_and_reason() -> None:
+    """Case A - skipped this turn: a fresh, stateless request (no
+    conversation_id, no earlier turn) where `price_signal` is
+    `status="skipped"` because `geo_resolver` did not resolve the address,
+    and `price_signal` is absent from `executed_tools` (this is exactly the
+    real A3-rerun shape). The compact bundle handed to `report_writer` must
+    carry the real skip status and reason - the only signal the (now fixed)
+    system prompt needs to correctly describe this as a this-turn skip,
+    never a prior-turn reuse. No schema change: `status`/`reason` already
+    existed on `ToolEvidence`."""
+    bundle = _bundle(
+        prompt="האם המחיר הגיוני ביחס לאזור?",
+        executed_tools=["geo_resolver"],
+        tool_results=[
+            ToolEvidence(
+                tool="geo_resolver",
+                status="ok",
+                observations={"outcome": "ambiguous"},
+            ),
+            ToolEvidence(
+                tool="price_signal",
+                status="skipped",
+                reason="Skipped because geo_resolver did not produce a resolved address.",
+                limitations=[
+                    "price_signal skipped: geo_resolver did not produce a resolved address."
+                ],
+            ),
+        ],
+    )
+
+    payload = build_compact_evidence_bundle(bundle)
+    price_entry = next(e for e in payload["tool_results"] if e["tool"] == "price_signal")
+
+    assert price_entry["status"] == "skipped"
+    assert "did not produce a resolved address" in price_entry["reason"]
+    assert "price_signal" not in payload["executed_tools"]
+
+
+def test_compact_bundle_reused_ok_result_is_distinguishable_from_skip() -> None:
+    """Behavioral proof (Case B - genuine reuse): a successful `status="ok"`
+    `nearby_services` result absent from `executed_tools` (e.g. reused via
+    conversation context on a "כמה רחוק?" follow-up) is a different, still
+    valid shape from a skipped/errored entry - report_writer can tell them
+    apart purely from `status`, with no schema change required."""
+    bundle = _bundle(
+        executed_tools=["geo_resolver"],
+        tool_results=[
+            ToolEvidence(tool="geo_resolver", status="ok", observations={"outcome": "resolved"}),
+            ToolEvidence(
+                tool="nearby_services",
+                status="ok",
+                observations={"place_count": 1, "categories": ["park"]},
+            ),
+        ],
+    )
+
+    payload = build_compact_evidence_bundle(bundle)
+    nearby_entry = next(e for e in payload["tool_results"] if e["tool"] == "nearby_services")
+
+    assert nearby_entry["status"] == "ok"
+    assert "nearby_services" not in payload["executed_tools"]
+
+
+def test_compact_bundle_executed_this_turn_result_is_correctly_flagged() -> None:
+    """Behavioral proof (Case C - executed this turn): a successful result
+    whose tool name IS in `executed_tools` is the plain "ran this turn"
+    case - unaffected by the skip/reuse distinction fix."""
+    bundle = _bundle(
+        executed_tools=["geo_resolver", "price_signal"],
+        tool_results=[
+            ToolEvidence(tool="geo_resolver", status="ok", observations={"outcome": "resolved"}),
+            ToolEvidence(
+                tool="price_signal", status="ok", observations={"deviation_percent": -11.71}
+            ),
+        ],
+    )
+
+    payload = build_compact_evidence_bundle(bundle)
+
+    assert set(payload["executed_tools"]) == {"geo_resolver", "price_signal"}
+    for entry in payload["tool_results"]:
+        assert entry["tool"] in payload["executed_tools"]
+        assert entry["status"] == "ok"
+

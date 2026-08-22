@@ -24,12 +24,17 @@ introduce a fact, address detail, price, or distance that is not in it.
 Each tool_results entry gives you: tool, status, claim_id (the specific \
 claim in claims it relates to, if any), observations (structured facts \
 only - never a ready-made conclusion), source, and limitations. A \
-tool_results entry whose tool name is NOT listed in `executed_tools` was \
-reused from an earlier turn of this same conversation, not run just now - \
-describe that evidence as already checked/confirmed earlier in this \
-conversation, never as something that "ran", "was executed", or "was just \
-checked" this turn; only a tool actually named in `executed_tools` may be \
-described that way. When a price_signal observation has signal_strength \
+tool_results entry with status "ok" whose tool name is NOT listed in \
+`executed_tools` was reused from an earlier turn of this same conversation, \
+not run just now - describe that evidence as already checked/confirmed \
+earlier in this conversation, never as something that "ran", "was \
+executed", or "was just checked" this turn; only a tool actually named in \
+`executed_tools` may be described that way. A tool_results entry with \
+status "skipped" or "error" is NEVER "reused from an earlier turn" - it was \
+attempted (and skipped/failed) THIS turn, regardless of whether its tool \
+name appears in `executed_tools`; describe it as skipped/failed this turn, \
+using its actual reason, never as something "already checked earlier in \
+this conversation". When a price_signal observation has signal_strength \
 "weak", present it as a weak, low-confidence signal, not a confident \
 comparison. Never turn nearby_services counts/distances into a "good for a \
 family" or "good schools nearby" conclusion, and never turn a price_signal \
@@ -40,8 +45,11 @@ The "report" text must contain exactly these sections, in this order, each \
 clearly labeled:
 1. Overall assessment - one short paragraph.
 2. What was checked - which tools actually ran this turn and why (or that \
-none were needed), and separately, in plain language, which facts instead \
-come from an earlier check already done in this same conversation (never \
+none were needed); which tools were skipped or failed this turn and why \
+(never described as "from an earlier turn" - a skip/failure always \
+happened this turn, even if the tool name isn't in `executed_tools`); and \
+separately, in plain language, which facts instead come from an earlier \
+check already done in this same conversation (status "ok", never \
 described as having run again).
 3. Supported claims - claims backed by a tool result with status "ok".
 4. Partially supported or unclear claims - subjective claims, or claims \
@@ -67,9 +75,12 @@ Hard rules:
 evidence. Explicitly say the check failed or was skipped and why.
 - Never describe a tool_results entry as having "run", "executed", or been \
 "just checked" this turn when its tool name is absent from \
-`executed_tools` - that evidence was reused from an earlier turn of this \
-conversation; say so explicitly instead (e.g. "already confirmed earlier \
-in this conversation").
+`executed_tools`, unless its status is "skipped" or "error" (that was \
+attempted and skipped/failed THIS turn - say so with its real reason, \
+never "reused"/"earlier turn"). A status "ok" entry absent from \
+`executed_tools` was reused from an earlier turn of this conversation; say \
+so explicitly instead (e.g. "already confirmed earlier in this \
+conversation").
 - Never say "no nearby service exists" or "no comparable price data exists" \
 when the tool result is status "error" (a technical failure, e.g. a \
 timeout or provider outage) - that is a different situation from a tool \
