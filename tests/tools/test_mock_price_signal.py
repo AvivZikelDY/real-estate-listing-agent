@@ -111,7 +111,7 @@ async def test_rental_listing_is_skipped_not_evaluated() -> None:
 
 @pytest.mark.asyncio
 async def test_demo_listing_price_comparison_ramat_aviv() -> None:
-    """The interactive agent demo listing (docs/local_agent_demo.md):
+    """The GUI demo listing (README.md "Try the GUI"):
     Derech HaTayasim 8, Ramat Aviv, 4,700,000 ILS / 111 sqm."""
     tool = MockPriceSignal()
 

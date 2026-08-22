@@ -83,7 +83,7 @@ async def test_ambiguous_address_returns_structured_ambiguous_outcome() -> None:
     ],
 )
 async def test_interactive_demo_address_resolves_deterministically(address: str) -> None:
-    """The interactive agent demo (docs/local_agent_demo.md) listing address
+    """The GUI demo (README.md "Try the GUI") listing address
     resolves the same way regardless of small punctuation/spelling variants
     triage_planner might extract verbatim from the pasted listing text."""
     tool = MockGeoResolver()

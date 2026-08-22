@@ -1,16 +1,29 @@
 # Tel Aviv Real Estate Listing Triage Agent
 
 A university AI Agents project: an agent that triages a Tel Aviv
-real-estate listing and produces a buyer-facing, grounded report. Given a
-free-text listing (optionally with a buyer question or goal), it verifies
-only the intentionally supported external-evidence scope for that listing
-— it does not attempt to fact-check every claim in the text.
+real-estate listing and produces a buyer-facing, grounded report.
 
 See `docs/scope.md`, `docs/contracts.md`, and `docs/tools.md` for
 detailed scope, API/interface contracts, and tool-implementation context.
 See `.github/copilot-instructions.md` for hard constraints on this repo.
 
-## Architecture
+## What the agent checks
+
+Given a free-text listing (optionally with a buyer question or goal), the
+agent verifies only the intentionally supported external-evidence scope
+for that listing — it does not attempt to fact-check every claim in the
+text. Depending on what the listing/question needs, it may:
+
+- resolve the listing's address/location (`geo_resolver`);
+- look up nearby amenities such as parks, schools, or transit
+  (`nearby_services`);
+- compare the asking price against comparable transactions
+  (`price_signal`).
+
+Only claims within this scope are checked; everything else is passed
+through as unverified listing text.
+
+## Architecture / execution flow
 
 Normal execution uses exactly **two LLM calls**:
 
@@ -25,17 +38,34 @@ plan validation, tool-input building, evidence collection/execution,
 evidence-to-claim mapping, and evidence-bundle assembly, orchestrated by
 `agent_orchestrator` and recorded by `step_tracer`.
 
-Three deterministic tools supply external evidence when a plan calls for
-them:
-
-- `geo_resolver` — resolves an address/description to a location.
-- `nearby_services` — nearby points of interest for a given category.
-- `price_signal` — comparable-sale/price signal for a resolved location.
+```text
+POST /api/execute {prompt, conversation_id?}
+    ↓
+agent_orchestrator.run_agent_pipeline
+    ↓
+ConversationContext lookup (if conversation_id given)
+    ↓
+triage_planner            (LLM #1)
+    ↓
+plan_validator
+    ↓
+collect_evidence_with_context   (reuses cached tool results when possible)
+    ↓
+ToolExecutor  ->  ToolRegistry  ->  geo_resolver / nearby_services / price_signal
+    ↓
+evidence_bundle_builder
+    ↓
+report_writer              (LLM #2)
+    ↓
+{status, error, response, steps}
+    ↓
+ConversationContext saved (if conversation_id given)
+```
 
 Each tool has a `mock` implementation (small hardcoded fixtures, the
 default) and a live implementation (`TOOLS_MODE=live`) that makes real
-external HTTP calls (GovMap, OpenStreetMap/Overpass). See
-`docs/contracts.md` for the full per-tool contract.
+external HTTP calls (GovMap, OpenStreetMap/Overpass). See `docs/tools.md`
+for the full per-tool contract.
 
 ## API
 
@@ -50,27 +80,29 @@ The required endpoints:
   "..." (optional)}` and returns exactly `{"status", "error", "response",
   "steps"}`, where each item of `steps` is exactly
   `{"module", "prompt", "response"}` for each LLM call made, in order.
-- `GET /` — the GUI (see below).
+  `conversation_id` is optional: without it, a request is a fresh,
+  fully stateless single turn.
+- `GET /` — the GUI (see [Try the GUI](#try-the-gui)).
 
 `GET /health` also exists as an operational liveness check; it is not one
 of the four assignment API endpoints.
 
-## Conversation / follow-up support
+### Conversation / follow-up support
 
 `conversation_id` is optional. Without it (or with an unknown id), a
 request is handled as a fresh, fully stateless single turn. When the same
 id is reused, the agent keeps a small structured "compact follow-up
 context" (not a transcript replay, not the raw report text) so a follow-up
 question can reuse the prior turn's resolved location/tool results where
-still valid, without spending an extra tool or LLM call. See
-`docs/contracts.md` for the exact fields kept and the current in-memory
-storage limitation.
+still valid, without spending an extra tool or LLM call. Context lives
+only in the running server process's memory: restarting the server, or
+landing on a different serverless instance, clears it. See
+`docs/contracts.md` and `docs/follow_up_context_plan.md` for the exact
+fields kept and this limitation.
 
-## Requirements
+## Run locally
 
-- Python 3.12
-
-## Setup
+Requires Python 3.12.
 
 Create a virtual environment:
 
@@ -95,7 +127,63 @@ Copy the environment example and adjust as needed:
 cp .env.example .env
 ```
 
-### Configuration
+Start the app:
+
+```bash
+uvicorn app:app --reload
+```
+
+By default this runs fully offline (`LLM_MODE=fake`, `TOOLS_MODE=mock`).
+See [Configuration](#configuration) to switch to the real LLM/tool
+backends.
+
+## Try the GUI
+
+Visit `http://127.0.0.1:8000/` for the GUI, or
+`http://127.0.0.1:8000/health` for a liveness check.
+
+The page shows a conversation indicator and a "New conversation" button:
+a `conversation_id` is generated client-side the first time you submit a
+question and sent with every subsequent request in the same browser tab,
+until you click "New conversation" or close the tab.
+
+A worked example, using the default `LLM_MODE=fake`/`TOOLS_MODE=mock`
+setup (deterministic, no network calls):
+
+**Turn 1** (paste a full listing together with a question):
+
+```text
+דרך הטייסים 8, תל אביב, 4 חדרים, 111 מ"ר, מחיר מבוקש 4,700,000 ₪.
+האם יש פארק קרוב?
+```
+
+**Turn 2** (same conversation, no listing text needed):
+
+```text
+כמה רחוק?
+```
+
+This address has a small deterministic mock dataset (nearby park/school/
+daycare/transit, and comparable prices for its neighborhood) specifically
+so this example is meaningful offline — see
+`src/listing_agent/tools/mock_implementations/` and
+`tests/tools/test_mock_*.py`.
+
+The same flow works over plain HTTP with no GUI, using the same
+`/api/execute` contract and `conversation_id` field:
+
+```bash
+CID="demo-$(date +%s)"
+curl -s -X POST http://127.0.0.1:8000/api/execute \
+  -H "Content-Type: application/json" \
+  -d "{\"prompt\": \"דרך הטייסים 8, תל אביב, 4 חדרים, 111 מ\\\"ר, מחיר מבוקש 4,700,000 ₪. האם יש פארק קרוב?\", \"conversation_id\": \"$CID\"}"
+
+curl -s -X POST http://127.0.0.1:8000/api/execute \
+  -H "Content-Type: application/json" \
+  -d "{\"prompt\": \"כמה רחוק?\", \"conversation_id\": \"$CID\"}"
+```
+
+## Configuration
 
 Key settings (see `.env.example` for the full list):
 
@@ -106,54 +194,75 @@ Key settings (see `.env.example` for the full list):
   `LLM_MODE=llmod`** — otherwise it silently serves fixture output.
 - LLMod credentials/base URL/model are read only from environment
   variables (`LLMOD_API_KEY`, etc.); no secret is ever committed, logged,
-  or included in a traced step.
+  or included in a traced step. Never put real keys in this README or any
+  other committed file.
 - `TOOLS_MODE` — `mock` (default) uses small hardcoded fixture data;
   `live` uses the live GovMap/Overpass implementations.
+- `TOOL_BACKEND` — `mock` (default) is the in-process `LocalToolExecutor`,
+  which is what actually honours `TOOLS_MODE` above; `mcp` is an
+  unimplemented placeholder that only proves the seam/configuration
+  validation. Leave this as `mock`.
 
-## Running tests
+For safe/offline local development:
+
+```bash
+LLM_MODE=fake
+TOOLS_MODE=mock
+```
+
+For real submission/live behavior:
+
+```bash
+LLM_MODE=llmod
+TOOLS_MODE=live
+```
+
+## Testing / acceptance
+
+Automated suite (fully offline, `LLM_MODE=fake`/`TOOLS_MODE=mock`):
 
 ```bash
 pytest
 ```
 
-The automated suite runs fully offline (`LLM_MODE=fake`, `TOOLS_MODE=mock`)
-and covers the API contracts, the orchestrator pipeline, each LLM module,
+It covers the API contracts, the orchestrator pipeline, each LLM module,
 each tool (mock and live implementations), the conversation/follow-up
 layer, and a set of permanent regression tests pinning previously-found
 bugs.
-
-## Linting
 
 ```bash
 ruff check .
 ```
 
-## Running the app
+`scripts/run_e2e_scenarios.py` is the manual **End-to-End Acceptance
+Scenarios** harness — a set of scripted, checked scenarios run against a
+live server for final acceptance, separate from pytest:
 
 ```bash
-uvicorn app:app --reload
+# Cheap, offline check of one or more scenarios:
+LLM_MODE=fake TOOLS_MODE=mock python scripts/run_e2e_scenarios.py --only 1 4
+
+# Full run against a live server for final acceptance:
+python scripts/run_e2e_scenarios.py
 ```
 
-Then visit:
+Generated JSON/Markdown results are written under `.tmp/e2e_acceptance/`
+(gitignored — running the script never dirties `git status`). Use
+`LLM_MODE=fake`/`TOOLS_MODE=mock` for cheap local iteration, and reserve
+an `LLM_MODE=llmod`/`TOOLS_MODE=live` run against a running server for an
+intentional final acceptance pass.
 
-- `http://127.0.0.1:8000/` — the GUI
-- `http://127.0.0.1:8000/health` — health check
+## Known limitations
 
-By default this runs with `LLM_MODE=fake`; set `LLM_MODE=llmod` (plus the
-`LLMOD_*` environment variables) in `.env` to exercise the real LLM
-provider.
+- The optional follow-up context is in-memory and process-local: it does
+  not survive a restart, and is not guaranteed to be visible across
+  instances/cold starts in a serverless deployment. Stateless single-turn
+  use is unaffected.
+- `price_signal` does not accept `lat`/`lon`, so it may perform its own
+  address lookup even when `geo_resolver` already resolved it this turn.
 
-## Regenerating the architecture diagram
-
-`GET /api/model_architecture` serves a pre-generated PNG. Regenerate it
-after changing the module/tool topology:
-
-```bash
-python scripts/generate_architecture_image.py
-```
-
-This writes `src/listing_agent/static/model_architecture.png`.
-
+See `docs/contracts.md` §7 for the complete list of known, intentional,
+non-blocking limitations.
 
 ## Dependency security
 
@@ -192,3 +301,14 @@ To temporarily exempt a package you control from the cooldown, add it under
 `[tool.uv.exclude-newer-package]` in `pyproject.toml` — note that
 `test_uv_cooldown_has_no_unexpected_per_package_exemptions` will fail until
 the exemption is reviewed and the test updated, which is deliberate.
+
+## Regenerating the architecture diagram
+
+`GET /api/model_architecture` serves a pre-generated PNG. Regenerate it
+after changing the module/tool topology:
+
+```bash
+python scripts/generate_architecture_image.py
+```
+
+This writes `src/listing_agent/static/model_architecture.png`.

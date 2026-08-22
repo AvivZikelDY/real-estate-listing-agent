@@ -50,8 +50,8 @@ async def test_no_services_found_far_from_known_locations() -> None:
     assert result.data.places == []
 
 
-# Coordinates of the interactive agent demo address, Derech HaTayasim 8,
-# Ramat Aviv (docs/local_agent_demo.md).
+# Coordinates of the GUI demo address, Derech HaTayasim 8,
+# Ramat Aviv (README.md "Try the GUI").
 _DEMO_LAT, _DEMO_LON = 32.1128, 34.8042
 
 
