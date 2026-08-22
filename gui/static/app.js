@@ -89,26 +89,30 @@ function renderSteps(steps) {
     const item = document.createElement("li");
     item.className = "step-item";
 
-    const heading = document.createElement("h3");
-    heading.textContent = step.module;
-    item.appendChild(heading);
+    const details = document.createElement("details");
+    details.className = "step-details";
+
+    const summary = document.createElement("summary");
+    summary.textContent = step.module;
+    details.appendChild(summary);
 
     const promptLabel = document.createElement("strong");
     promptLabel.textContent = "Prompt:";
-    item.appendChild(promptLabel);
+    details.appendChild(promptLabel);
 
     const promptPre = document.createElement("pre");
     promptPre.textContent = JSON.stringify(step.prompt || {}, null, 2);
-    item.appendChild(promptPre);
+    details.appendChild(promptPre);
 
     const responseLabel = document.createElement("strong");
     responseLabel.textContent = "Response:";
-    item.appendChild(responseLabel);
+    details.appendChild(responseLabel);
 
     const responsePre = document.createElement("pre");
     responsePre.textContent = JSON.stringify(step.response || {}, null, 2);
-    item.appendChild(responsePre);
+    details.appendChild(responsePre);
 
+    item.appendChild(details);
     stepsList.appendChild(item);
   }
 }

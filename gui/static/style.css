@@ -18,6 +18,59 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
+.architecture-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #4338ca;
+  text-decoration: none;
+}
+
+.architecture-link:hover {
+  text-decoration: underline;
+}
+
+.how-it-works {
+  margin-bottom: 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  background: #f8fafc;
+}
+
+.how-it-works summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.flow-diagram {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.flow-notes {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.conversation-hint,
+.field-hint {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: -0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 .examples {
   display: flex;
   align-items: center;
@@ -131,12 +184,19 @@ button#run-button:disabled {
   padding-top: 1.5rem;
 }
 
+.result h2 {
+  font-size: 1.3rem;
+  color: #1e1b4b;
+  margin-top: 0;
+}
+
 .response-text {
   white-space: pre-wrap;
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 1rem;
+  font-size: 1.05rem;
 }
 
 #steps-details {
@@ -153,18 +213,19 @@ button#run-button:disabled {
 }
 
 .step-item {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 0.75rem;
+  padding: 0.6rem 0.75rem;
 }
 
-.step-item h3 {
-  margin: 0 0 0.4rem;
+.step-details summary {
+  cursor: pointer;
+  font-weight: 600;
   font-size: 0.95rem;
 }
 
-.step-item pre {
+.step-details pre {
   white-space: pre-wrap;
   word-break: break-word;
   background: #f3f4f6;

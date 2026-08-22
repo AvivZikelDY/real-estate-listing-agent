@@ -10,9 +10,35 @@
   <main>
     <h1>Tel Aviv Real Estate Listing Triage Agent</h1>
     <p class="subtitle">
-      Paste a Tel Aviv listing (plus an optional buyer question) and get a
-      grounded, evidence-based triage report in seconds.
+      Paste a Tel Aviv property listing and optionally ask a buyer question.
+      The agent identifies checkable claims, gathers evidence when
+      justified, and returns a concise buyer-facing report.
     </p>
+
+    <a
+      class="architecture-link"
+      href="/api/model_architecture"
+      target="_blank"
+      rel="noopener"
+    >View architecture</a>
+
+    <details id="how-it-works" class="how-it-works" open>
+      <summary>How this agent works</summary>
+      <pre class="flow-diagram">User Prompt
+  &darr;
+Triage Planner (LLM)
+  &darr;
+Deterministic Validation &amp; Tool Routing
+  &darr;
+Evidence Collection / Tool Execution or Reuse
+  &darr;
+Report Writer (LLM)</pre>
+      <ul class="flow-notes">
+        <li>Normal execution uses exactly two LLM calls.</li>
+        <li>Tools run only when deterministic rules justify them.</li>
+        <li>Follow-up turns can reuse compact context/tool results.</li>
+      </ul>
+    </details>
 
     <section class="examples" aria-label="Example prompts">
       <span class="examples-label">Try an example:</span>
@@ -25,6 +51,11 @@
       <span id="conversation-indicator" class="conversation-indicator"></span>
       <button type="button" id="new-conversation-button">New conversation</button>
     </section>
+    <p class="conversation-hint">
+      Follow-up questions (e.g. "How far?") reuse this conversation and its
+      already-gathered evidence where still valid. "New conversation" starts
+      a fresh, unrelated turn.
+    </p>
 
     <form id="triage-form">
       <label for="prompt">Listing details and question</label>
@@ -35,6 +66,11 @@
         placeholder="e.g. HaYarkon 120, Tel Aviv, 4 rooms, 90 sqm, asking 3,200,000 ILS. Is it suitable for a family with two kids? Follow-up questions about the same listing (e.g. 'How far?') stay in the same conversation until you start a new one."
         dir="auto"
       ></textarea>
+      <p class="field-hint">
+        Paste a listing on its own, a listing with an explicit buyer
+        question, or - in an ongoing conversation - just a follow-up
+        question about the same listing.
+      </p>
       <button type="submit" id="run-button">Run Agent</button>
     </form>
 
@@ -43,11 +79,11 @@
     <p id="error" class="error" hidden></p>
 
     <section id="result" class="result" hidden>
-      <h2>Agent response</h2>
+      <h2>Final Answer</h2>
       <div id="response-text" class="response-text" dir="auto"></div>
 
       <details id="steps-details">
-        <summary>Full steps trace</summary>
+        <summary>LLM Execution Trace</summary>
         <ol id="steps-list" class="steps-list"></ol>
       </details>
     </section>
