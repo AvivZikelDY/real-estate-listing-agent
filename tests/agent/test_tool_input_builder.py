@@ -28,6 +28,10 @@ def test_extract_city_hint_finds_known_city() -> None:
     assert extract_city_hint("HaYarkon 120, Tel Aviv") == "Tel Aviv"
 
 
+def test_extract_city_hint_finds_hyphenated_tel_aviv() -> None:
+    assert extract_city_hint("דיזנגוף 100, תל-אביב") == "תל-אביב"
+
+
 def test_extract_city_hint_returns_none_when_no_known_city() -> None:
     assert extract_city_hint("Some unknown street 5") is None
     assert extract_city_hint(None) is None
@@ -290,20 +294,57 @@ def test_the_refusal_is_lifted_as_soon_as_the_address_names_a_city() -> None:
     assert result.city_hint == "תל אביב"
 
 
+def test_an_explicit_non_tel_aviv_city_refuses_to_run_geo_resolver() -> None:
+    """Scope enforcement: a listing that explicitly names a city other than
+    Tel Aviv must not reach `geo_resolver` execution, even one GovMap could
+    resolve on its own (e.g. a neighbouring Gush Dan city)."""
+    for raw_address in ("הרצל 10, חיפה", "הרצל 10, רמת גן", "Herzl 10, Haifa"):
+        call = ToolCall(tool="geo_resolver", arguments={})
+        details = PropertyDetails(listing_type="purchase", raw_address=raw_address)
+
+        with pytest.raises(MissingDependencyError) as excinfo:
+            build_tool_input(call, details, geo_output=None)
+
+        assert excinfo.value.tool == "geo_resolver"
+        assert "Tel Aviv" in excinfo.value.reason
+
+
+def test_downstream_location_tools_cannot_be_prepared_without_geo_output() -> None:
+    """`nearby_services`/`price_signal` both require `geo_resolver`'s
+    resolved output; since a non-Tel-Aviv address never produces one (the
+    previous test), neither can ever be prepared for such a listing."""
+    details = PropertyDetails(
+        listing_type="purchase", raw_address="הרצל 10, חיפה", asking_price=2_000_000, sqm=80
+    )
+
+    nearby_call = ToolCall(tool="nearby_services", arguments={})
+    with pytest.raises(MissingDependencyError) as nearby_excinfo:
+        build_tool_input(nearby_call, details, geo_output=None)
+    assert nearby_excinfo.value.tool == "nearby_services"
+
+    price_call = ToolCall(tool="price_signal", arguments={})
+    with pytest.raises(MissingDependencyError) as price_excinfo:
+        build_tool_input(price_call, details, geo_output=None)
+    assert price_excinfo.value.tool == "price_signal"
+
+
 def test_city_matching_is_case_insensitive_and_returns_canonical_spelling() -> None:
     """"TEL AVIV" is the same city as "Tel Aviv" and must not stop a run."""
     assert extract_city_hint("120 HaYarkon St, TEL AVIV") == "Tel Aviv"
+    assert extract_city_hint("120 HaYarkon St, tel aviv") == "Tel Aviv"
 
 
-def test_a_city_name_containing_another_one_wins() -> None:
-    """"אור יהודה" contains "יהוד"; the longer, more specific name must win."""
-    assert extract_city_hint("הרצל 5, אור יהודה") == "אור יהודה"
-
-
-def test_gush_dan_cities_beyond_tel_aviv_are_recognised() -> None:
-    assert extract_city_hint("ז'בוטינסקי 10, פתח תקווה") == "פתח תקווה"
-    assert extract_city_hint("ביאליק 25, רמת גן") == "רמת גן"
-    assert extract_city_hint("שמואל 3, גבעת שמואל") == "גבעת שמואל"
+def test_non_tel_aviv_cities_are_no_longer_recognised() -> None:
+    """Product scope is Tel Aviv only: every other city, including nearby
+    Gush Dan/Sharon-strip towns that GovMap itself would happily resolve,
+    must not be treated as a recognised city hint."""
+    assert extract_city_hint("ז'בוטינסקי 10, פתח תקווה") is None
+    assert extract_city_hint("ביאליק 25, רמת גן") is None
+    assert extract_city_hint("שמואל 3, גבעת שמואל") is None
+    assert extract_city_hint("הרצל 5, אור יהודה") is None
+    assert extract_city_hint("הרצל 10, חיפה") is None
+    assert extract_city_hint("Herzl 10, Haifa") is None
+    assert extract_city_hint("יפו 97, ירושלים") is None
 
 
 def test_azor_is_not_matched_as_a_city() -> None:
@@ -319,15 +360,26 @@ def test_a_city_name_inside_a_longer_word_is_not_a_city() -> None:
     """Caught by the end-to-end scenarios, not by anything smaller.
 
     "בן יהודה 45" is a Tel Aviv street that names no city at all, but the
-    four letters of יהוד sit inside יהודה - so the address looked like it
-    named a city, the no-city rule did not fire, and geo_resolver answered
-    with בן יהודה 45 in Nes Ziyyona, Haifa and two other towns. The word is
-    common in Israeli street names: בן יהודה, יהודה הנשיא, יהודה המכבי.
+    four letters of יהוד sit inside יהודה - the substring-boundary check in
+    `_names_city` must still refuse a match that isn't followed by a
+    non-letter, or an address like this would look like it named a city
+    when it does not.
     """
     assert extract_city_hint("בן יהודה 45") is None
     assert extract_city_hint("יהודה הנשיא 30") is None
-    # The city itself, standing on its own, still matches.
-    assert extract_city_hint("הרצל 5, יהוד") == "יהוד"
+
+
+def test_a_tel_aviv_adjectival_form_is_not_a_false_match() -> None:
+    """"תל אביבית" ("Tel-Avivian", feminine adjective) must not match: the
+    letters right after "תל אביב" are alphabetic, so this is a different
+    word, not the city name standing on its own."""
+    assert extract_city_hint("דירה תל אביבית קלאסית") is None
+
+
+def test_an_address_with_no_city_at_all_is_not_guessed() -> None:
+    """The agent never infers Tel Aviv merely because a street is commonly
+    associated with it."""
+    assert extract_city_hint("בן יהודה 45") is None
 
 
 def test_a_hebrew_preposition_before_a_city_still_matches() -> None:

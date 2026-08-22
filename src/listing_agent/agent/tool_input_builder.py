@@ -25,104 +25,52 @@ from src.listing_agent.tools.schemas import (
 
 ToolInputModel = GeoResolverInput | NearbyServicesInput | PriceSignalInput
 
-# The cities `geo_resolver` is allowed to use as a disambiguation hint:
-# Gush Dan and the Sharon strip around it, plus the other major cities.
-# Matched as a case-insensitive substring of `raw_address` - never guessed,
-# never inferred, and never an extra LLM call.
+# The only city `geo_resolver` is allowed to use as a disambiguation hint:
+# this agent's product scope is Tel Aviv listings only. Matched as a
+# case-insensitive substring of `raw_address` - never guessed, never
+# inferred, and never an extra LLM call.
 #
 # >>> THIS LIST IS NOW LOAD-BEARING <<<
 # A listing whose address matches nothing here does not merely lose a hint:
 # `build_tool_input` refuses to run `geo_resolver` at all (see
-# `_NO_CITY_HINT_REASON`). A city missing from this list therefore costs a
-# whole run, which is why it now covers the metro area rather than the
-# eight names it started with.
+# `_NO_CITY_HINT_REASON`). A listing that explicitly names a city other than
+# Tel Aviv - or names no city at all - is out of scope and must not proceed
+# to geo/tool execution.
 #
 # WHY SUBSTRING AND NOT WORD MATCHING: Hebrew one-letter prefixes attach
 # directly to the word ("בתל אביב" = "in Tel Aviv"), so there is no word
-# boundary to anchor on. That is also why every name here must be
-# distinctive enough not to turn up inside an ordinary word - "אזור" (Azor)
-# is deliberately absent, because it is also the everyday word for "area"
-# and would match "באזור מוקף גינות" in any listing that has one.
+# boundary to anchor on.
 _CITY_NAMES: tuple[str, ...] = (
     # Tel Aviv itself, including the hyphenated spelling govmap returns.
     "תל אביב",
     "תל-אביב",
     "Tel Aviv",
-    # Gush Dan
-    "רמת גן",
-    "Ramat Gan",
-    "גבעתיים",
-    "Givatayim",
-    "בני ברק",
-    "Bnei Brak",
-    "חולון",
-    "Holon",
-    "בת ים",
-    "Bat Yam",
-    "אור יהודה",
-    "Or Yehuda",
-    "קרית אונו",
-    "קריית אונו",
-    "Kiryat Ono",
-    "גבעת שמואל",
-    "Givat Shmuel",
-    "גני תקווה",
-    "יהוד",
-    "Yehud",
-    "פתח תקווה",
-    "פתח תקוה",
-    "Petah Tikva",
-    "ראשון לציון",
-    "Rishon LeZion",
-    # The Sharon strip
-    "רמת השרון",
-    "Ramat HaSharon",
-    "הרצליה",
-    "Herzliya",
-    "הוד השרון",
-    "Hod HaSharon",
-    "כפר סבא",
-    "Kfar Saba",
-    "רעננה",
-    "Raanana",
-    # South of the metro
-    "נס ציונה",
-    "Ness Ziona",
-    "רחובות",
-    "Rehovot",
-    # The rest of the country's major cities, kept from the original list.
-    "ירושלים",
-    "Jerusalem",
-    "חיפה",
-    "Haifa",
-    "באר שבע",
-    "Beer Sheva",
 )
 
-# Longest first, so a city whose name contains another one ("אור יהודה"
-# contains "יהוד") is always tested before the shorter name and wins. The
-# secondary alphabetical key exists only to keep the order reproducible.
+# Longest first, kept for determinism even though only one city remains;
+# the secondary alphabetical key exists only to keep the order reproducible.
 _KNOWN_CITY_HINTS: tuple[str, ...] = tuple(
     sorted(_CITY_NAMES, key=lambda city: (-len(city), city))
 )
 
-# Why `geo_resolver` is not run at all when no city was found.
+# Why `geo_resolver` is not run at all when the address doesn't explicitly
+# name Tel Aviv.
 #
-# Without a city, govmap has nothing to disambiguate with and its fuzzy
-# search answers from the whole country: measured on a real listing,
+# Without a recognised city, govmap has nothing to disambiguate with and its
+# fuzzy search answers from the whole country: measured on a real listing,
 # "בשמואל תמיר 2" came back with Be'er Sheva as the best match and three
 # more matches in other towns. The tool then either reports `ambiguous`
 # (so every dependent tool is skipped anyway) or, worse, resolves
 # confidently to a street of the same name in the wrong city.
 #
-# Guessing the city is not an option - the agent must never introduce a
-# fact the listing did not state. So the run stops here and says so: a
-# skipped tool carrying "no city was found" is honest evidence, whereas
-# coordinates in the wrong city are not.
+# This agent's product scope is Tel Aviv only, and guessing the city is not
+# an option regardless - the agent must never introduce a fact the listing
+# did not state. So the run stops here and says so: a skipped tool carrying
+# "does not name Tel Aviv" is honest evidence, whereas coordinates in the
+# wrong city (or a city outside scope) are not.
 _NO_CITY_HINT_REASON = (
-    "the listing address '{address}' does not name a city this agent recognises, "
-    "and a city is never guessed - without one govmap searches the whole country "
-    "and answers with a same-named street somewhere else"
+    "the listing address '{address}' does not explicitly name Tel Aviv, and "
+    "this agent does not guess the city - it only handles Tel Aviv listings"
 )
 
 # Free-text (Hebrew + English) synonyms observed in claim text/planner
@@ -174,8 +122,9 @@ class MissingDependencyError(Exception):
 
     - `nearby_services`/`price_signal` need `geo_resolver`'s resolved
       output and it has not produced one; or
-    - `geo_resolver` itself needs a city to search in, and the address
-      names none (see `_NO_CITY_HINT_REASON`).
+    - `geo_resolver` itself needs the address to explicitly name Tel Aviv,
+      the only city this agent's scope covers, and it does not (see
+      `_NO_CITY_HINT_REASON`).
 
     Kept distinct from `pydantic.ValidationError` (which means "the plan's
     own data is invalid for this tool") - a missing dependency is not an
@@ -463,7 +412,8 @@ def build_tool_input(
         MissingDependencyError: a prerequisite is missing - either
             `call.tool` is location-dependent (`nearby_services`,
             `price_signal`) and `geo_output` is `None`, or it is
-            `geo_resolver` and the address names no recognised city.
+            `geo_resolver` and the address does not explicitly name Tel
+            Aviv, the only city in this agent's scope.
             Callers report this as a `"skipped"` (not `"error"`) evidence
             entry, or as an explicit unresolved-dependency placeholder in
             diagnostic output.
@@ -473,10 +423,11 @@ def build_tool_input(
     if call.tool == "geo_resolver":
         raw_address = property_details.raw_address or ""
         city_hint = extract_city_hint(raw_address)
-        # No recognised city means no run at all: see `_NO_CITY_HINT_REASON`.
-        # An empty address is left to the schema's own `min_length`, because
-        # "there is no address" is a different thing to report than "there
-        # is an address and it names no city".
+        # Not explicitly Tel Aviv means no run at all: see
+        # `_NO_CITY_HINT_REASON`. An empty address is left to the schema's
+        # own `min_length`, because "there is no address" is a different
+        # thing to report than "there is an address and it does not name
+        # Tel Aviv".
         if raw_address and city_hint is None:
             raise MissingDependencyError(
                 call.tool, _NO_CITY_HINT_REASON.format(address=raw_address)

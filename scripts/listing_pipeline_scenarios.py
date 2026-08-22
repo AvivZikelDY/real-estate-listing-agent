@@ -661,7 +661,7 @@ SCENARIOS: dict[int, Scenario] = {
     ),
     14: Scenario(
         id=14,
-        title="Address outside Tel Aviv - comparables coverage boundary",
+        title="Address outside Tel Aviv - out of scope, geo_resolver refused",
         listing=(
             'דירת 4 חדרים ברחוב יפו 97 בירושלים.\n95 מ"ר, מחיר 2,800,000 ש"ח.\n'
             "קרובה לתחבורה ציבורית."
@@ -700,10 +700,11 @@ SCENARIOS: dict[int, Scenario] = {
             ],
         ),
         invariants=(
-            "a non-Tel-Aviv address still resolves and still gets nearby evidence",
-            "thin or absent comparables surface as a typed price outcome, not an error",
-            "a plain listing-fact price with no comparative question/claim never "
-            "triggers price_signal (price-provenance guard)",
+            "a non-Tel-Aviv listing is outside this agent's supported scope",
+            "geo_resolver is refused/skipped because the address does not "
+            "explicitly name Tel Aviv - the city is never guessed",
+            "nearby_services and price_signal cannot proceed without "
+            "geo_resolver's resolved output, so neither runs for this listing",
         ),
     ),
     15: Scenario(
