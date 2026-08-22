@@ -402,7 +402,13 @@ async def test_diagnostic_recovers_omitted_nearby_services_call() -> None:
             sqm=100,
             rooms=4,
         ),
-        buyer_goal="price_validation",
+        # No explicit buyer question this turn (see `_run_with_plan(..., None,
+        # ...)` below) - default/general triage, so a known omitted
+        # `nearby_amenities` claim must still be recovered. `"price_validation"`
+        # is excluded from recovery instead (Stage 1.5/1.6 fix) since that
+        # goal reflects an explicit narrowed comparative-price question, which
+        # this scenario is not.
+        buyer_goal="fast_claim_triage",
         claims=[
             Claim(text="דירת 4 חדרים", type="factual", category="rooms"),
             Claim(text='מחיר 4,700,000 ש"ח', type="factual", category="price"),

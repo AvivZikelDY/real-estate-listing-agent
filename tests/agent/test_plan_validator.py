@@ -284,6 +284,56 @@ def test_nearby_services_synthesis_ignores_subjective_claims() -> None:
     assert not any(call.tool == "nearby_services" for call in validated.tool_calls)
 
 
+def test_nearby_services_synthesis_does_not_fire_for_price_validation_goal() -> None:
+    """Stage 1.5/1.6 regression (real Listing A / A3 scenario): when the
+    buyer's explicit goal this turn is `"price_validation"`, a retained
+    `nearby_amenities` claim (e.g. "קרובה לפארק") must NOT cause
+    `nearby_services` to be synthesized behind the planner's back, even
+    though the planner itself omitted the call on purpose. Only
+    `geo_resolver`/`price_signal` (the planner's own selection) should
+    survive."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "price_validation",
+            "claims": [
+                Claim(text="קרובה לפארק", type="factual", category="nearby_amenities"),
+                Claim(text="מחיר מציאה!", type="factual", category="price_comparison"),
+            ],
+            "tool_calls": [
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="price_signal", arguments={}),
+            ],
+        }
+    )
+
+    validated = validate_plan(plan, buyer_prompt="האם המחיר הגיוני ביחס לאזור?")
+
+    tool_names = {call.tool for call in validated.tool_calls}
+    assert tool_names == {"geo_resolver", "price_signal"}
+    assert "nearby_services" not in tool_names
+
+
+def test_nearby_services_synthesis_still_fires_for_family_suitability_goal() -> None:
+    """Guards against over-fixing: a narrowed `"family_suitability"` goal is
+    exactly the case where a known `nearby_amenities` claim the planner
+    omitted must still be repaired - only `"price_validation"` is excluded."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "family_suitability",
+            "claims": [
+                Claim(text="קרובה לפארק", type="factual", category="nearby_amenities"),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert any(call.tool == "nearby_services" for call in validated.tool_calls)
+
+
 # --- Phase 19: deriving a price_comparison claim/linkage (Deviation 2) ------
 
 

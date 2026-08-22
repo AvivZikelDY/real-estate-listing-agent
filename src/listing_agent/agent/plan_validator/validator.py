@@ -503,10 +503,13 @@ def _ensure_nearby_services_for_known_claims(
     tool_calls: list[ToolCall],
     claims: list[Claim],
     property_details: PropertyDetails,
+    buyer_goal: str,
 ) -> list[ToolCall]:
     """Synthesize a missing `nearby_services` call for a known, verifiable
     `nearby_amenities` claim (Phase 19 - closes the "full listing loses
-    nearby_services" deviation).
+    nearby_services" deviation) - but only when the current turn's
+    `buyer_goal` hasn't already explicitly narrowed the plan away from
+    nearby-amenities checking (Stage 1.5/1.6 fix).
 
     `triage_planner` sometimes correctly classifies a claim's canonical
     category as `"nearby_amenities"` (see `agent.claim_categories`) but
@@ -514,7 +517,16 @@ def _ensure_nearby_services_for_known_claims(
     classification itself is already trusted deterministic behavior (not
     an LLM decision this function second-guesses), a known, checkable
     claim must not silently go unchecked just because the LLM forgot to
-    propose its tool call.
+    propose its tool call - this is the default/general-triage behavior
+    (e.g. `fast_claim_triage`, `family_suitability`, `nearby_services_check`,
+    `general_question`).
+
+    Exception: when `buyer_goal` is `"price_validation"`, the buyer has
+    explicitly narrowed this turn to a comparative-price question, and the
+    planner already omitted `nearby_services` on purpose. Synthesizing an
+    unrelated nearby-amenities check behind the planner's back in that case
+    would silently reintroduce a check the explicit narrowed goal does not
+    call for, so this function does not fire for `"price_validation"`.
 
     Never overrides a planner-proposed `nearby_services` call (including
     one with imperfect argument naming - that is normalized separately by
@@ -530,6 +542,8 @@ def _ensure_nearby_services_for_known_claims(
     supported category actually covers.
     """
     if any(call.tool == "nearby_services" for call in tool_calls):
+        return tool_calls
+    if buyer_goal == "price_validation":
         return tool_calls
     if not property_details.raw_address:
         return tool_calls
@@ -751,7 +765,9 @@ def validate_plan(
     7. Drop `price_signal` calls forbidden for rentals or missing price/sqm.
     8. Synthesize a missing `nearby_services` call for a known, verifiable
        `nearby_amenities` claim the planner did not propose a tool call for
-       (Phase 19).
+       (Phase 19), unless `buyer_goal` is `"price_validation"` - an
+       explicit narrowed price-only goal must not have an unrelated nearby
+       check synthesized behind the planner (Stage 1.5/1.6 fix).
     9. Ensure `geo_resolver` runs first whenever a location-dependent tool
        is selected (dropping those tools if no address is available).
     10. Drop `price_signal` unless justified by an explicit comparative-price
@@ -803,7 +819,7 @@ def validate_plan(
     tool_calls = _dedupe_by_tool(plan.tool_calls)
     tool_calls = _drop_forbidden_price_signal(tool_calls, plan.property_details)
     tool_calls = _ensure_nearby_services_for_known_claims(
-        tool_calls, claims, plan.property_details
+        tool_calls, claims, plan.property_details, plan.buyer_goal
     )
     tool_calls = _ensure_geo_resolver_dependency(
         tool_calls, plan.property_details, missing_information
