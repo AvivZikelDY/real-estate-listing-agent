@@ -21,3 +21,4 @@ my_listing.json
 response.txt
 .vercel
 .env*
+!.env.example
