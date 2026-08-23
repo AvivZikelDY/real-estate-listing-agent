@@ -328,6 +328,7 @@ acceptance run table.
 
 ## Evaluation and demo
 
+- Deployed instance: <https://real-estate-listing-agent.vercel.app>
 - [Evaluation & Demo Guide](docs/evaluation_guide.md) — supported question
   types, a recommended multi-turn demo, and what good agent behavior looks
   like.
