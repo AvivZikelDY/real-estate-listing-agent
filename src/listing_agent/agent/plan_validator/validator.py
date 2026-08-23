@@ -466,7 +466,10 @@ def _has_comparative_price_provenance(claims: list[Claim]) -> bool:
 
 
 def _drop_unjustified_price_signal(
-    tool_calls: list[ToolCall], claims: list[Claim], buyer_prompt: str
+    tool_calls: list[ToolCall],
+    claims: list[Claim],
+    buyer_prompt: str,
+    previous_buyer_prompt: str = "",
 ) -> list[ToolCall]:
     """Phase 0 price-provenance guard.
 
@@ -474,7 +477,14 @@ def _drop_unjustified_price_signal(
     A. the current turn's raw buyer prompt contains explicit
        comparative-price intent (`prompt_has_comparative_price_intent`), or
     B. the listing/plan already contains an explicit, non-derived
-       comparative-price claim (`_has_comparative_price_provenance`).
+       comparative-price claim (`_has_comparative_price_provenance`), or
+    C. the immediately preceding turn's raw prompt already expressed
+       explicit comparative-price intent (`previous_buyer_prompt`) - a
+       follow-up turn that only supplies previously-missing data (e.g.
+       "מספר הבית 120 והדירה 105 מ"ר") never restates the original
+       "מחיר מציאה" wording itself, so that provenance must not be lost
+       just because this turn's own claims/prompt do not repeat it
+       (follow-up property-merge fix).
 
     `buyer_goal == "price_validation"` alone (an LLM classification with no
     corroborating evidence) is never sufficient - this is the deterministic
@@ -482,8 +492,10 @@ def _drop_unjustified_price_signal(
     and size could otherwise trigger `price_signal` merely because the
     planner invented that goal.
     """
-    if _has_comparative_price_provenance(claims) or prompt_has_comparative_price_intent(
-        buyer_prompt
+    if (
+        _has_comparative_price_provenance(claims)
+        or prompt_has_comparative_price_intent(buyer_prompt)
+        or prompt_has_comparative_price_intent(previous_buyer_prompt)
     ):
         return tool_calls
     return [call for call in tool_calls if call.tool != "price_signal"]
@@ -495,6 +507,7 @@ def _ensure_price_signal_for_comparison_claim(
     property_details: PropertyDetails,
     buyer_prompt: str,
     buyer_goal: str,
+    previous_buyer_prompt: str = "",
 ) -> list[ToolCall]:
     """Synthesize a missing `price_signal` call when a genuine comparative-
     price claim/question already justifies it but the planner's own
@@ -517,10 +530,16 @@ def _ensure_price_signal_for_comparison_claim(
        a `purchase` listing with both `asking_price` and `sqm` present.
     2. The same provenance gate as `_drop_unjustified_price_signal`: a
        genuine, non-derived `price_comparison` claim
-       (`_has_comparative_price_provenance`), or explicit comparative-price
+       (`_has_comparative_price_provenance`), explicit comparative-price
        intent in the current turn's raw prompt
        (`prompt_has_comparative_price_intent`) - e.g. the documented
-       "האם המחיר הגיוני ביחס לאזור?" case.
+       "האם המחיר הגיוני ביחס לאזור?" case - or that same intent already
+       present in the immediately preceding turn's raw prompt
+       (`previous_buyer_prompt`): a follow-up turn that only supplies
+       previously-missing `asking_price`/`sqm` data never restates the
+       original "מחיר מציאה" wording itself, so that provenance must
+       survive across exactly one turn of missing-data completion
+       (follow-up property-merge fix).
     3. `buyer_goal` must be `"fast_claim_triage"` or `"price_validation"` -
        an explicitly narrowed goal (`"nearby_services_check"`,
        `"family_suitability"`, `"general_question"`) means the buyer has
@@ -548,6 +567,7 @@ def _ensure_price_signal_for_comparison_claim(
     if not (
         _has_comparative_price_provenance(claims)
         or prompt_has_comparative_price_intent(buyer_prompt)
+        or prompt_has_comparative_price_intent(previous_buyer_prompt)
     ):
         return tool_calls
     return [*tool_calls, ToolCall(tool="price_signal", arguments={})]
@@ -838,6 +858,7 @@ def validate_plan(
     max_tool_calls: int = MAX_TOOL_CALLS,
     max_claims: int = MAX_CLAIMS,
     buyer_prompt: str = "",
+    previous_buyer_prompt: str = "",
 ) -> TriagePlan:
     """Validate and normalize `plan`, returning a cleaned-up `TriagePlan`.
 
@@ -901,6 +922,14 @@ def validate_plan(
             intent (see `prompt_has_comparative_price_intent`). Defaults to
             `""` (no signal) for backward compatibility with existing
             direct callers/tests.
+        previous_buyer_prompt: The immediately preceding turn's raw buyer
+            prompt, if any (follow-up property-merge fix). Used only
+            alongside `buyer_prompt` to detect explicit comparative-price
+            intent that was already expressed one turn ago and has not
+            been re-typed this turn (e.g. a follow-up that only supplies a
+            previously-missing `sqm`/house number never restates "מחיר
+            מציאה" itself). Defaults to `""` (no signal), so existing
+            callers/tests are unaffected.
     """
     unknown_tool_errors = [
         f"Unknown tool '{call.tool}' is not in the allowed tool whitelist "
@@ -931,12 +960,19 @@ def validate_plan(
         tool_calls, claims, plan.property_details, plan.buyer_goal
     )
     tool_calls = _ensure_price_signal_for_comparison_claim(
-        tool_calls, claims, plan.property_details, buyer_prompt, plan.buyer_goal
+        tool_calls,
+        claims,
+        plan.property_details,
+        buyer_prompt,
+        plan.buyer_goal,
+        previous_buyer_prompt,
     )
     tool_calls = _ensure_geo_resolver_dependency(
         tool_calls, plan.property_details, missing_information
     )
-    tool_calls = _drop_unjustified_price_signal(tool_calls, claims, buyer_prompt)
+    tool_calls = _drop_unjustified_price_signal(
+        tool_calls, claims, buyer_prompt, previous_buyer_prompt
+    )
     tool_calls, claims = _ensure_price_comparison_claim_linkage(
         tool_calls, claims, plan.buyer_goal
     )

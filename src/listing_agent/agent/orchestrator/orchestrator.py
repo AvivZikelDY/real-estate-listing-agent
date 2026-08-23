@@ -135,6 +135,11 @@ async def run_agent_pipeline(
             max_tool_calls=settings.max_tool_calls,
             max_claims=settings.max_claims,
             buyer_prompt=prompt,
+            previous_buyer_prompt=(
+                (stored_context.last_question or "")
+                if stored_context is not None and not listing_changed
+                else ""
+            ),
         )
     except PlanValidationError as exc:
         tracer.record_deterministic_step(

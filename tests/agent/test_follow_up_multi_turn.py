@@ -751,3 +751,277 @@ async def test_scenario_11_follow_up_context_stays_compact_across_many_turns() -
     stored = store.get("conv-long")
     assert stored is not None
     assert stored.turn_count == 9
+
+
+async def test_scenario_12_missing_data_follow_up_merges_known_property() -> None:
+    """Regression: follow-up property-merge fix.
+
+    Turn 1: an incomplete purchase listing ("מחיר מציאה מתחת למחיר השוק",
+    price + rooms known, sqm missing) - price_signal correctly cannot run
+    yet (sqm missing).
+
+    Turn 2 (same conversation) supplies only the previously-missing house
+    number and sqm ("מספר הבית 120 והדירה 105 מ"ר"), restating nothing
+    else. The bug: the planner's own turn-2 TriagePlan legitimately leaves
+    raw_address/asking_price/rooms null (current-turn extraction only) and
+    proposes zero tool calls - but the system must still reconsider the
+    now-eligible price_signal check against the *effective* merged
+    property, using the address completed with the new house number, and
+    must not ask the buyer to restate facts already known.
+    """
+    store = InMemoryContextStore()
+    turn1_prompt = (
+        "דירת 4 חדרים מהממת, קרובה לבתי ספר, גנים ופארקים.\n"
+        "מחיר מציאה מתחת למחיר השוק!\n"
+        "4,700,000 שקלים.\n"
+        "תל אביב, רחוב הירקון."
+    )
+    turn1_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="הירקון, תל אביב",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=None,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[
+            Claim(text="קרובה לבתי ספר, גנים ופארקים", type="factual", category="nearby_amenities"),
+            Claim(
+                text="מחיר מציאה מתחת למחיר השוק!", type="factual", category="price_comparison"
+            ),
+        ],
+        missing_information=["sqm"],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["school", "park"]}),
+        ],
+    )
+    result1 = await run_agent_pipeline(
+        turn1_prompt,
+        llm_client=_client(turn1_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-missing-data",
+        context_store=store,
+    )
+    assert "price_signal" not in result1.bundle.executed_tools
+
+    # Turn 2: the planner's own raw extraction only reports the new house
+    # number/sqm - exactly the real, observed LLM behavior this fix must
+    # tolerate (see module docstring: current-turn extraction semantics are
+    # never changed by this fix).
+    turn2_plan = TriagePlan(
+        property_details=PropertyDetails(listing_type="purchase", sqm=105),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מספר הבית 120", type="factual", category="address")],
+        missing_information=["raw_address", "asking_price", "rooms"],
+        tool_calls=[],
+    )
+    result2 = await run_agent_pipeline(
+        'מספר הבית 120 והדירה 105 מ"ר.',
+        llm_client=_client(turn2_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-missing-data",
+        context_store=store,
+    )
+
+    effective = result2.bundle.plan.property_details
+    assert effective.raw_address == "הירקון 120, תל אביב"
+    assert effective.asking_price == 4_700_000
+    assert effective.rooms == 4
+    assert effective.sqm == 105
+
+    assert "raw_address" not in result2.bundle.plan.missing_information
+    assert "asking_price" not in result2.bundle.plan.missing_information
+    assert "rooms" not in result2.bundle.plan.missing_information
+
+    planned_tools = {call.tool for call in result2.bundle.plan.tool_calls}
+    assert "price_signal" in planned_tools
+    assert "geo_resolver" in planned_tools
+
+
+async def test_scenario_13_explicit_current_turn_price_override_wins() -> None:
+    """Regression: an explicit current-turn value always overrides stored
+    context, even for the effective-property merge (not just the raw
+    per-field hydration already covered by scenario 2)."""
+    store = InMemoryContextStore()
+    turn1_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address=KNOWN_ADDRESS,
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=105,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מחיר מציאה!", type="factual", category="price_comparison")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+    await run_agent_pipeline(
+        "מחיר מציאה! 4,700,000 שקלים.",
+        llm_client=_client(turn1_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-price-override",
+        context_store=store,
+    )
+
+    turn2_plan = TriagePlan(
+        property_details=PropertyDetails(asking_price=4_400_000),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="המחיר עכשיו 4,400,000", type="factual", category="price")],
+        tool_calls=[],
+    )
+    result2 = await run_agent_pipeline(
+        "המחיר עכשיו 4,400,000",
+        llm_client=_client(turn2_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-price-override",
+        context_store=store,
+    )
+
+    effective = result2.bundle.plan.property_details
+    assert effective.asking_price == 4_400_000
+    assert effective.raw_address == KNOWN_ADDRESS
+    assert effective.sqm == 105
+
+
+async def test_scenario_14_unstructured_previous_address_is_not_completed() -> None:
+    """Regression: never fabricate an address completion when the stored
+    address has no safe "<street>, <city>" structure to merge into (e.g.
+    it already contains a number, or has no comma-separated city part).
+    The buyer must be asked for the genuinely missing piece instead."""
+    store = InMemoryContextStore()
+    turn1_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="הירקון 8, תל אביב",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=None,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מחיר מציאה!", type="factual", category="price_comparison")],
+        missing_information=["sqm"],
+        tool_calls=[ToolCall(tool="geo_resolver", arguments={})],
+    )
+    await run_agent_pipeline(
+        "הירקון 8, תל אביב. מחיר מציאה! 4,700,000 שקלים.",
+        llm_client=_client(turn1_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-no-fabricate",
+        context_store=store,
+    )
+
+    # This turn claims a *different* house number - the stored address
+    # already has one (8), so it must never be silently overwritten/merged
+    # into a fabricated "הירקון 8 120, תל אביב"-style string.
+    turn2_plan = TriagePlan(
+        property_details=PropertyDetails(sqm=105),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מספר הבית 120", type="factual", category="address")],
+        missing_information=["raw_address"],
+        tool_calls=[],
+    )
+    result2 = await run_agent_pipeline(
+        'מספר הבית 120 והדירה 105 מ"ר.',
+        llm_client=_client(turn2_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-no-fabricate",
+        context_store=store,
+    )
+
+    effective = result2.bundle.plan.property_details
+    assert effective.raw_address == "הירקון 8, תל אביב"
+    assert "120" not in effective.raw_address
+
+
+async def test_scenario_15_llm_resolved_address_completion_not_treated_as_listing_change() -> None:
+    """Regression (live validation finding): when the CURRENT turn's own
+    raw_address is already non-null because the planner itself resolved
+    the full address (street + newly supplied house number [+ city]),
+    with or without an accompanying "address"-category claim,
+    `is_listing_change` must NOT treat this as switching to a different
+    listing merely because the string differs from the stored
+    (house-number-less) address. Otherwise the whole known property
+    (asking_price, rooms, listing_type) is wiped and previously-eligible
+    checks (price_signal) can never be reconsidered."""
+    store = InMemoryContextStore()
+    turn1_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="הירקון, תל אביב",
+            asking_price=4_700_000,
+            rooms=4,
+            sqm=None,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[
+            Claim(text="קרובה לבתי ספר, גנים ופארקים", type="factual", category="nearby_amenities"),
+            Claim(text="מחיר מציאה מתחת למחיר השוק!", type="factual", category="price_comparison"),
+        ],
+        missing_information=["sqm"],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="nearby_services", arguments={"categories": ["school", "park"]}),
+        ],
+    )
+    await run_agent_pipeline(
+        "דירת 4 חדרים מהממת, קרובה לבתי ספר, גנים ופארקים.\n"
+        "מחיר מציאה מתחת למחיר השוק!\n4,700,000 שקלים.\nתל אביב, רחוב הירקון.",
+        llm_client=_client(turn1_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-llm-resolved-address",
+        context_store=store,
+    )
+
+    # This mirrors real observed behavior: the planner resolves raw_address
+    # itself (with the house number and a slightly different city
+    # spelling) instead of leaving it null, leaves asking_price/rooms null
+    # since this turn does not restate them, sometimes reports
+    # listing_type as "unknown" again, and - critically - does not always
+    # emit an accompanying "address"-category claim for the house number
+    # (observed live: claims came back empty this turn).
+    turn2_plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="unknown",
+            raw_address="הירקון 120, תל אביב יפו",
+            asking_price=None,
+            rooms=None,
+            sqm=105,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[],
+        missing_information=["asking_price", "rooms", "listing_type"],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={"address": "הירקון 120, תל אביב יפו"})
+        ],
+    )
+    result2 = await run_agent_pipeline(
+        'מספר הבית 120 והדירה 105 מ"ר.',
+        llm_client=_client(turn2_plan),
+        tool_executor=_executor(),
+        tracer=StepTracer(),
+        conversation_id="conv-llm-resolved-address",
+        context_store=store,
+    )
+
+    effective = result2.bundle.plan.property_details
+    assert effective.listing_type == "purchase"
+    assert effective.raw_address == "הירקון 120, תל אביב יפו"
+    assert effective.asking_price == 4_700_000
+    assert effective.rooms == 4
+    assert effective.sqm == 105
+    assert "asking_price" not in result2.bundle.plan.missing_information
+    assert "rooms" not in result2.bundle.plan.missing_information
+    planned_tools = {call.tool for call in result2.bundle.plan.tool_calls}
+    assert "price_signal" in planned_tools
