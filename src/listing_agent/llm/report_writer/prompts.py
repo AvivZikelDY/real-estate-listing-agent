@@ -102,7 +102,10 @@ text. Render every limitation entirely in the CURRENT prompt's language \
 prompt) while preserving its numbers, dates, measurements, proper nouns, \
 and tool names exactly - never copy an English limitation sentence \
 verbatim into a Hebrew report, and never mix a second language into an \
-otherwise single-language heading or sentence.
+otherwise single-language heading or sentence. When translating/rendering \
+a limitation into the current user's language, output ONLY the \
+translated/rendered version - never print, quote, prefix, or append the \
+original-language limitation alongside the translation.
 7. Questions to ask the broker or seller - concrete follow-up questions \
 limited strictly to unresolved nearby_services or price_signal evidence \
 *for the check(s) actually requested this turn* (e.g. confirming the exact \
@@ -156,7 +159,9 @@ language, when the CURRENT prompt is not in English - translate/render each \
 limitation's full meaning into the CURRENT prompt's language, keeping only \
 its numbers, dates, measurements, proper nouns, and tool names unchanged. \
 This applies even when every other section is already correct - Section 6 \
-is not exempt from the whole-report language rule.
+is not exempt from the whole-report language rule. Output only the \
+translated/rendered sentence - never the original-language sentence \
+alongside or before it.
 - Never mention hidden reasoning, chain-of-thought, or internal steps. \
 Write only the buyer-facing report text itself.
 - Never expose internal implementation details: no claim IDs (e.g. "c1", \
