@@ -264,6 +264,61 @@ intentional final acceptance pass.
 See `docs/contracts.md` §7 for the complete list of known, intentional,
 non-blocking limitations.
 
+## Real examples we tried
+
+These are real `POST /api/execute` calls made against the deployed
+production instance (`LLM_MODE=llmod`, `TOOLS_MODE=live`) during
+acceptance testing — not fabricated samples. Full methodology and the
+complete scenario table are in
+[Final Evaluation Results](docs/final_evaluation.md); this section is just
+a few representative runs against the same listing.
+
+Same listing used in all three examples below:
+
+```text
+2,400,000 ₪
+3.5 חדרים
+קומה 5
+84 מ"ר
+
+מעפילי אגוז 28, נוה חן, תל אביב יפו
+
+דירה למכירה.
+דירת 3.5 חדרים שמורה בשכונת נווה חן המתחדשת בתל אביב.
+קומה 5 מתוך 7 עם מעלית, מיזוג אוויר ודוד שמש.
+מתאימה למשקיעים.
+קרובה לפארק, מחיר מציאה!
+```
+
+**1. Listing only, no question (default triage).** The planner picked out
+the listing's own checkable claims ("קרובה לפארק", "מחיר מציאה") and
+selected `geo_resolver`/`nearby_services`/`price_signal` accordingly — it
+did not invent verification for claims like the elevator, A/C, solar
+heater, or "מתאימה למשקיעים", which are outside this agent's tool scope.
+Result: grounded report, no fabricated facts.
+
+**2. Same listing + "האם הדירה מתאימה למשפחה?" (is this apartment suitable
+for a family?).** The plan materially shifted toward family-relevant
+nearby evidence (schools/daycare/parks/transit) instead of a generic
+summary. The report did not claim the area is "good for families" or
+"safe" — it framed conclusions around the actual nearby-service evidence
+returned and named what the tools can't establish.
+
+**3. Same listing + "האם המחיר הגיוני ביחס לאזור?" (is the price
+reasonable for the area?).** The planner recognized the explicit
+comparative-price question and planned `geo_resolver` + `price_signal`;
+`nearby_services` was correctly not planned, since it isn't needed to
+answer a price question. The report used the actual price-signal
+evidence returned rather than inventing a verdict, and did not produce an
+unsupported investment recommendation.
+
+A fourth real production check — a post-deployment park-only health check
+on a simplified version of the same listing, made as the final Stage 6
+production smoke test — also returned a grounded, correctly-scoped
+response (no `price_signal` planned for a park-only question). See
+[Final Evaluation Results](docs/final_evaluation.md) for the full
+acceptance run table.
+
 ## Evaluation and demo
 
 - [Evaluation & Demo Guide](docs/evaluation_guide.md) — supported question
