@@ -130,3 +130,21 @@ def test_system_prompt_gives_concrete_students_vs_family_followup_example() -> N
     assert '"park, supermarket"' in prompt
     assert "האם מתאימה לסטודנטים?" in prompt
     assert "buyer_goal must be general_question, NOT family_suitability" in prompt
+
+
+def test_system_prompt_states_street_number_precedence_over_neighborhood() -> None:
+    """Stabilization fix regression: when a listing contains both an
+    explicit street + house number and a separate neighborhood/area phrase,
+    the explicit street + house number must be extracted as raw_address -
+    the neighborhood name must never be substituted in its place (the
+    observed "בדיצה 4 ... באזור צפון יפו" -> wrongly extracted "צפון יפו 4"
+    regression)."""
+    from src.listing_agent.llm.triage_planner.prompts import TRIAGE_PLANNER_SYSTEM_PROMPT
+
+    prompt = TRIAGE_PLANNER_SYSTEM_PROMPT
+    assert (
+        "the explicit street + house number is the property address" in prompt
+    )
+    assert "never attach the house number to the neighborhood/area name" in prompt
+    assert "דיצה 4, תל אביב יפו" in prompt
+    assert "צפון יפו 4, תל אביב יפו" in prompt

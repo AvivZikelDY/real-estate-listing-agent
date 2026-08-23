@@ -489,6 +489,70 @@ def _drop_unjustified_price_signal(
     return [call for call in tool_calls if call.tool != "price_signal"]
 
 
+def _ensure_price_signal_for_comparison_claim(
+    tool_calls: list[ToolCall],
+    claims: list[Claim],
+    property_details: PropertyDetails,
+    buyer_prompt: str,
+    buyer_goal: str,
+) -> list[ToolCall]:
+    """Synthesize a missing `price_signal` call when a genuine comparative-
+    price claim/question already justifies it but the planner's own
+    `tool_calls` omitted it.
+
+    Mirrors `_ensure_nearby_services_for_known_claims`'s pattern: the claim
+    classification (or the current prompt's own wording) is already trusted
+    deterministic evidence of intent, so a known, checkable, justified
+    comparison must not silently go unchecked just because the LLM forgot
+    to propose its tool call. This closes the asymmetry where
+    `_ensure_nearby_services_for_known_claims` could add a missing
+    `nearby_services` call back, but nothing did the same for
+    `price_signal`.
+
+    This does NOT broaden *when* price_signal is allowed to run - it
+    enforces exactly the same two preconditions the rest of this module
+    already uses to gate the tool, just checked here to *add* the call
+    instead of only ever being used to *remove* it:
+    1. The same eligibility gate as `_drop_forbidden_price_signal`:
+       a `purchase` listing with both `asking_price` and `sqm` present.
+    2. The same provenance gate as `_drop_unjustified_price_signal`: a
+       genuine, non-derived `price_comparison` claim
+       (`_has_comparative_price_provenance`), or explicit comparative-price
+       intent in the current turn's raw prompt
+       (`prompt_has_comparative_price_intent`) - e.g. the documented
+       "האם המחיר הגיוני ביחס לאזור?" case.
+    3. `buyer_goal` must be `"fast_claim_triage"` or `"price_validation"` -
+       an explicitly narrowed goal (`"nearby_services_check"`,
+       `"family_suitability"`, `"general_question"`) means the buyer has
+       already steered the plan away from a price check this turn, and a
+       merely-retained listing price claim must not silently reintroduce
+       one behind that narrowed goal (mirrors the same narrowing respect
+       `_ensure_nearby_services_for_known_claims` already gives
+       `"price_validation"`/`"general_question"`).
+
+    Never overrides a planner-proposed `price_signal` call, and never fires
+    without a usable address (an unresolvable/missing address is handled by
+    `_ensure_geo_resolver_dependency`, which drops location-dependent tools
+    entirely rather than calling them blind).
+    """
+    if any(call.tool == "price_signal" for call in tool_calls):
+        return tool_calls
+    if buyer_goal not in ("fast_claim_triage", "price_validation"):
+        return tool_calls
+    if property_details.listing_type == "rental":
+        return tool_calls
+    if property_details.asking_price is None or property_details.sqm is None:
+        return tool_calls
+    if not property_details.raw_address:
+        return tool_calls
+    if not (
+        _has_comparative_price_provenance(claims)
+        or prompt_has_comparative_price_intent(buyer_prompt)
+    ):
+        return tool_calls
+    return [*tool_calls, ToolCall(tool="price_signal", arguments={})]
+
+
 def _ensure_geo_resolver_dependency(
     tool_calls: list[ToolCall],
     property_details: PropertyDetails,
@@ -802,19 +866,30 @@ def validate_plan(
        must not have an unrelated nearby check synthesized behind the
        planner (Stage 1.5/1.6 fix; Stage 4.4 fix extends this to
        `general_question`).
-    9. Ensure `geo_resolver` runs first whenever a location-dependent tool
-       is selected (dropping those tools if no address is available).
-    10. Drop `price_signal` unless justified by an explicit comparative-price
+    9. Synthesize a missing `price_signal` call when `buyer_goal` is
+       `"fast_claim_triage"` or `"price_validation"`, the plan already
+       carries a genuine, non-derived comparative-price claim or the
+       current prompt itself expresses explicit comparative-price intent,
+       the listing is a `purchase` with `asking_price`/`sqm` both present,
+       and the planner did not itself propose the call (mirrors step 8's
+       "known justified check must not go unchecked" pattern, extended to
+       `price_signal`; excluded for `"nearby_services_check"`,
+       `"family_suitability"`, and `"general_question"`, which have
+       explicitly narrowed the plan away from a price check this turn).
+    10. Ensure `geo_resolver` runs first whenever a location-dependent tool
+        is selected (dropping those tools if no address is available).
+    11. Drop `price_signal` unless justified by an explicit comparative-price
         claim or explicit comparative-price intent in `buyer_prompt` (Phase
-        0 - price provenance guard); `buyer_goal` alone is never enough.
-    11. Ensure a `price_signal` call is linked to a genuine comparative
+        0 - price provenance guard); `buyer_goal` alone is never enough. Also
+        acts as a defensive re-check of step 9's own justification.
+    12. Ensure a `price_signal` call is linked to a genuine comparative
         claim rather than the literal `"price"` listing fact, synthesizing
         one deterministic, explicitly-marked derived claim when the buyer's
         goal is `"price_validation"` and no such claim already exists
-        (Phase 19). Only ever fires once step 10 has already justified
+        (Phase 19). Only ever fires once step 11 has already justified
         keeping `price_signal`.
-    12. Order `geo_resolver` first (dependency order).
-    13. Cap the plan at `max_tool_calls` tool calls (default 3).
+    13. Order `geo_resolver` first (dependency order).
+    14. Cap the plan at `max_tool_calls` tool calls (default 3).
 
     Args:
         max_tool_calls: Configurable cap (Phase 17), normally sourced from
@@ -854,6 +929,9 @@ def validate_plan(
     tool_calls = _drop_forbidden_price_signal(tool_calls, plan.property_details)
     tool_calls = _ensure_nearby_services_for_known_claims(
         tool_calls, claims, plan.property_details, plan.buyer_goal
+    )
+    tool_calls = _ensure_price_signal_for_comparison_claim(
+        tool_calls, claims, plan.property_details, buyer_prompt, plan.buyer_goal
     )
     tool_calls = _ensure_geo_resolver_dependency(
         tool_calls, plan.property_details, missing_information

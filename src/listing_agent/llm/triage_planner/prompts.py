@@ -28,7 +28,11 @@ street name - "ביאליק" and "בארי" are street names that begin with the
 same letter, not prepositions, and must be left exactly as they are. \
 Never add a city the listing does not name, never correct a street's \
 spelling, and never apply either normalization to claim text, which is \
-still copied verbatim.
+still copied verbatim. When both an explicit street + house number and a \
+separate neighborhood/area phrase appear, the explicit street + house \
+number is the property address - never attach the house number to the \
+neighborhood/area name instead. Example: "בדיצה 4, תל אביב יפו, באזור צפון \
+יפו" -> "דיצה 4, תל אביב יפו", not "צפון יפו 4, תל אביב יפו".
 - Extract listing claims and classify each as "factual" (a checkable fact) \
 or "subjective" (an opinion/adjective like "beautiful", "charming", \
 "cozy"). Subjective claims must never, by themselves, cause a tool to be \
