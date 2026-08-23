@@ -139,38 +139,34 @@ backends.
 
 ## Try the GUI
 
-Visit `http://127.0.0.1:8000/` for the GUI, or
-`http://127.0.0.1:8000/health` for a liveness check.
+The easiest way to try the GUI is the deployed instance — see
+[Real examples we tried](#real-examples-we-tried) for the listing/question
+combinations to paste in, and [Evaluation and demo](#evaluation-and-demo)
+for the deployment URL.
+
+To run the GUI locally with real, working responses, configure a real LLM
+backend first (`LLM_MODE=llmod`, see [Configuration](#configuration)),
+then visit `http://127.0.0.1:8000/` (or `http://127.0.0.1:8000/health` for
+a liveness check).
+
+> **Note:** the default local setup (`LLM_MODE=fake`) does **not** produce
+> working GUI/HTTP responses — the bundled `FakeLLMClient` has no fixture
+> wired for arbitrary prompts submitted through `/api/execute`, so a
+> freshly-cloned local instance run with default settings will return an
+> application error for any prompt typed into the GUI. Deterministic
+> fake-mode responses are only exercised by the automated pytest suite and
+> by `scripts/run_e2e_scenarios.py`'s own scripted fixtures (see
+> [Testing / acceptance](#testing--acceptance)), not by the live GUI/HTTP
+> endpoint.
 
 The page shows a conversation indicator and a "New conversation" button:
 a `conversation_id` is generated client-side the first time you submit a
 question and sent with every subsequent request in the same browser tab,
 until you click "New conversation" or close the tab.
 
-A worked example, using the default `LLM_MODE=fake`/`TOOLS_MODE=mock`
-setup (deterministic, no network calls):
-
-**Turn 1** (paste a full listing together with a question):
-
-```text
-דרך הטייסים 8, תל אביב, 4 חדרים, 111 מ"ר, מחיר מבוקש 4,700,000 ₪.
-האם יש פארק קרוב?
-```
-
-**Turn 2** (same conversation, no listing text needed):
-
-```text
-כמה רחוק?
-```
-
-This address has a small deterministic mock dataset (nearby park/school/
-daycare/transit, and comparable prices for its neighborhood) specifically
-so this example is meaningful offline — see
-`src/listing_agent/tools/mock_implementations/` and
-`tests/tools/test_mock_*.py`.
-
 The same flow works over plain HTTP with no GUI, using the same
-`/api/execute` contract and `conversation_id` field:
+`/api/execute` contract and `conversation_id` field (requires
+`LLM_MODE=llmod` to actually return a response, per the note above):
 
 ```bash
 CID="demo-$(date +%s)"
@@ -311,6 +307,17 @@ comparative-price question and planned `geo_resolver` + `price_signal`;
 answer a price question. The report used the actual price-signal
 evidence returned rather than inventing a verdict, and did not produce an
 unsupported investment recommendation.
+
+`price_signal` requires a resolved location from `geo_resolver` first. The
+live government address index can occasionally return several address
+candidates instead of one exact match (address ambiguity is a property of
+the live data source, not specific to this listing). When that happens,
+the agent skips the price comparison and reports the ambiguity rather than
+inventing a number — this is expected, grounded behavior, not a planning
+failure. A successful run of this same scenario does produce a full
+comparison (asking price/sqm, comparable median price/sqm, and percent of
+median); see [Final Evaluation Results](docs/final_evaluation.md) for both
+outcomes as actually observed.
 
 A fourth real production check — a post-deployment park-only health check
 on a simplified version of the same listing, made as the final Stage 6
