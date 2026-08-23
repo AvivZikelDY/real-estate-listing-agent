@@ -94,7 +94,15 @@ does not need asking_price/rooms/sqm at all - do not mention them here).
 6. Limitations - every item of the limitations list, faithfully (data-source \
 caveats, appraisal/legal disclaimers, failed/skipped checks). Keep each \
 one's full meaning and its figures exactly; render it in the report's \
-language (see the language rule above) - never soften, merge, or drop one.
+language (see the language rule above) - never soften, merge, or drop one. \
+IMPORTANT: limitations are internal evidence text and arrive in English \
+regardless of the buyer's language - they are NOT verbatim buyer-facing \
+text. Render every limitation entirely in the CURRENT prompt's language \
+(translate to Hebrew for a Hebrew prompt, keep in English for an English \
+prompt) while preserving its numbers, dates, measurements, proper nouns, \
+and tool names exactly - never copy an English limitation sentence \
+verbatim into a Hebrew report, and never mix a second language into an \
+otherwise single-language heading or sentence.
 7. Questions to ask the broker or seller - concrete follow-up questions \
 limited strictly to unresolved nearby_services or price_signal evidence \
 *for the check(s) actually requested this turn* (e.g. confirming the exact \
@@ -143,6 +151,12 @@ qualitative phrase like "in line with the area", is not acceptable.
 - Never perform or imply a professional/certified appraisal. price_signal \
 data is a data-driven signal only.
 - Never give legal advice.
+- Never leave any part of Section 6 (Limitations) in English, or any other \
+language, when the CURRENT prompt is not in English - translate/render each \
+limitation's full meaning into the CURRENT prompt's language, keeping only \
+its numbers, dates, measurements, proper nouns, and tool names unchanged. \
+This applies even when every other section is already correct - Section 6 \
+is not exempt from the whole-report language rule.
 - Never mention hidden reasoning, chain-of-thought, or internal steps. \
 Write only the buyer-facing report text itself.
 - Never expose internal implementation details: no claim IDs (e.g. "c1", \
