@@ -189,6 +189,40 @@ def test_system_prompt_avoids_redundant_address_and_comparable_sales_requests() 
     assert "provide comparable sale prices, market" in prompt
 
 
+def test_system_prompt_requires_section_6_limitations_in_current_language() -> None:
+    """Stabilization fix regression: Section 6 (Limitations) must be
+    explicitly, redundantly required to render in the CURRENT prompt's
+    language - live testing found `report_writer` frequently left this
+    section verbatim in English (and once leaked a stray Arabic word into
+    a Hebrew heading) despite the general language rule already existing.
+    This asserts both the inline Section 6 reminder and the dedicated Hard
+    Rule are present in the system prompt."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "limitations are internal evidence text and arrive in English" in prompt
+    assert "NOT verbatim buyer-facing text" in prompt
+    assert "never copy an English limitation sentence verbatim into a Hebrew report" in prompt
+    assert "Never leave any part of Section 6 (Limitations) in English" in prompt
+    assert "Section 6 is not exempt from the whole" in prompt
+
+
+def test_system_prompt_forbids_bilingual_duplication_of_limitations() -> None:
+    """Follow-up regression: live testing after the first Section 6 fix
+    found `report_writer` translating each limitation correctly but also
+    keeping the original English sentence alongside it (e.g. "Coordinates
+    are the centre point... -> הקואורדינטות הן..."). The prompt must
+    explicitly forbid this bilingual duplication - only the translated/
+    rendered sentence may appear, never the original-language sentence too."""
+    from src.listing_agent.llm.report_writer.prompts import REPORT_WRITER_SYSTEM_PROMPT
+
+    prompt = REPORT_WRITER_SYSTEM_PROMPT
+    assert "output ONLY the translated/rendered version" in prompt
+    assert "never print, quote, prefix, or append the original-language limitation" in prompt
+    assert "Output only the translated/rendered sentence" in prompt
+    assert "never the original-language sentence alongside or before it" in prompt
+
+
 # --- Stage 1.8: skipped-this-turn must never be mislabeled "reused" --------
 
 

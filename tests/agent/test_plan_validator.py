@@ -709,3 +709,167 @@ def test_invariant_c_invented_buyer_goal_alone_never_keeps_price_signal() -> Non
     validated = validate_plan(plan, buyer_prompt="Tell me about this listing.")
 
     assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
+def test_price_signal_synthesized_when_planner_omits_it_despite_genuine_claim() -> None:
+    """Stabilization fix: a `fast_claim_triage` plan for a `purchase` listing
+    with `asking_price`/`sqm` present, and a genuine (non-derived)
+    `price_comparison` claim, must have `price_signal` (+ `geo_resolver`)
+    added back even when the planner's own `tool_calls` never proposed it -
+    this is the exact real-LLM regression scenario ("מחיר מצוין מתחת למחיר
+    השוק!" with a fast_claim_triage plan omitting price_signal)."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(
+                    text="מחיר מצוין מתחת למחיר השוק!",
+                    type="factual",
+                    category="price_comparison",
+                ),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    tool_names = {call.tool for call in validated.tool_calls}
+    assert "price_signal" in tool_names
+    assert "geo_resolver" in tool_names
+
+
+def test_price_signal_synthesized_for_explicit_price_validation_question() -> None:
+    """The documented README case: an explicit comparative-price buyer
+    question (no listing price_comparison claim needed) must also cause
+    `price_signal` to be added back when the planner omitted it."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "price_validation",
+            "claims": [],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan, buyer_prompt="האם המחיר הגיוני ביחס לאזור?")
+
+    assert "price_signal" in {call.tool for call in validated.tool_calls}
+
+
+def test_price_signal_not_synthesized_without_comparison_claim_or_intent() -> None:
+    """Negative case: the same property facts (purchase, asking_price, sqm)
+    but no genuine price_comparison claim and no comparative-price intent
+    in the buyer prompt must NOT synthesize `price_signal` - synthesis must
+    never fire merely because price + sqm exist."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(text='מחיר 3,000,000 ש"ח', type="factual", category="price"),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan, buyer_prompt="ספר לי על הדירה הזו.")
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
+def test_price_signal_not_synthesized_for_rentals() -> None:
+    """Negative case: rentals must never have `price_signal` synthesized,
+    even with a genuine comparative-price claim present."""
+    plan = _plan(listing_type="rental")
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(text="מחיר מתחת למחיר השוק", type="factual", category="price_comparison"),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
+def test_price_signal_not_synthesized_when_sqm_missing() -> None:
+    """Negative case: a genuine comparative-price claim is not enough on its
+    own - `asking_price` and `sqm` must both still be present."""
+    plan = _plan(sqm=None)
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(text="מחיר מתחת למחיר השוק", type="factual", category="price_comparison"),
+            ],
+            "tool_calls": [ToolCall(tool="geo_resolver", arguments={})],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
+def test_price_signal_synthesis_never_overrides_a_planner_proposed_call() -> None:
+    """A planner-proposed `price_signal` call is never duplicated by
+    synthesis."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "fast_claim_triage",
+            "claims": [
+                Claim(text="מחיר מתחת למחיר השוק", type="factual", category="price_comparison"),
+            ],
+            "tool_calls": [
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="price_signal", arguments={"note": "planner-proposed"}),
+            ],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    price_calls = [call for call in validated.tool_calls if call.tool == "price_signal"]
+    assert len(price_calls) == 1
+    assert price_calls[0].arguments == {"note": "planner-proposed"}
+
+
+def test_price_signal_not_synthesized_when_goal_narrowed_to_nearby_only() -> None:
+    """Negative case: a buyer question that explicitly narrows the plan to
+    `nearby_services_check` must NOT have `price_signal` synthesized back
+    in, even though the listing itself still carries a genuine
+    price_comparison claim - the narrowed goal already reflects the
+    planner's deliberate choice to omit it this turn."""
+    plan = _plan()
+    plan = plan.model_copy(
+        update={
+            "buyer_goal": "nearby_services_check",
+            "claims": [
+                Claim(
+                    text="מחיר מציאה מתחת למחיר השוק",
+                    type="factual",
+                    category="price_comparison",
+                ),
+                Claim(
+                    text="מעניין אותי רק אם יש פארק קרוב.",
+                    type="factual",
+                    category="nearby_amenities",
+                ),
+            ],
+            "tool_calls": [
+                ToolCall(tool="geo_resolver", arguments={}),
+                ToolCall(tool="nearby_services", arguments={"categories": ["park"]}),
+            ],
+        }
+    )
+
+    validated = validate_plan(plan)
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
