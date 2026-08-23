@@ -158,6 +158,25 @@ def _map_nearby_services(
     return observations, limitations, None
 
 
+def _percent_of_median(output: PriceSignalOutput) -> float | None:
+    """The asking price per sqm expressed as a percentage of the median.
+
+    `deviation_percent` already says the same thing as a signed deviation,
+    but the report states the ratio directly ("115% of the neighbourhood
+    median"), and that headline figure is computed here rather than left to
+    `report_writer` - arithmetic is not something an LLM should be trusted
+    with when a deterministic module is already holding both numbers.
+
+    Returns `None` if either figure is missing or the median is zero, so a
+    degenerate comparison simply omits the ratio instead of inventing one.
+    """
+    asking = output.asking_price_per_sqm
+    median = output.median_comparison_price_per_sqm
+    if asking is None or not median:
+        return None
+    return round(asking / median * 100, 1)
+
+
 def _map_price_signal(
     output: PriceSignalOutput,
 ) -> tuple[dict[str, Any], list[str], str | None]:
@@ -171,6 +190,7 @@ def _map_price_signal(
             "reference_range_low_per_sqm": output.reference_range_low_per_sqm,
             "reference_range_high_per_sqm": output.reference_range_high_per_sqm,
             "deviation_percent": output.deviation_percent,
+            "percent_of_median": _percent_of_median(output),
             "comparison_count": output.comparison_count,
             "signal_strength": "weak" if is_weak else "normal",
         }

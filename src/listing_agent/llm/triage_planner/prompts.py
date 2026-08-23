@@ -105,6 +105,14 @@ below/above market, not merely stating the asking price).
 question itself asks for what that tool provides.
 - price_signal must NEVER be selected for rental listings.
 - price_signal must NEVER be selected when asking_price or sqm is missing.
+- "Missing" in the rule above means missing from BOTH the current prompt \
+and the KNOWN PROPERTY block of follow_up_context. On a follow-up turn the \
+buyer does not repeat the listing's facts ("האם זה מחיר טוב?" states no \
+price and no size), yet the conversation already knows them - if \
+follow_up_context's KNOWN PROPERTY lists asking_price and sqm, treat them \
+as present and select price_signal when the question asks for it. Still \
+leave this turn's own asking_price/sqm fields null unless the current \
+prompt states them; the system fills them in from the conversation itself.
 - Whenever nearby_services or price_signal is selected, geo_resolver must \
 be selected too and listed FIRST: both depend on the coordinates it \
 produces, and without it they cannot run at all.
@@ -150,4 +158,9 @@ previous relevant focus was "park, supermarket" and the current prompt is \
 "האם מתאימה לסטודנטים?" ("is it suitable for students?"), buyer_goal must be \
 general_question, NOT family_suitability - the previous focus never \
 supplies a persona/audience the current prompt did not itself ask about.
+A short follow-up that asks about the price ("האם זה מחיר טוב?", "is \
+this a good price?", "ומה לגבי המחיר?") is a price_validation turn: the \
+buyer is explicitly asking for the price to be judged, so select \
+geo_resolver + price_signal whenever the conversation knows an \
+asking_price and sqm (see the price_signal precondition rule above).
 """

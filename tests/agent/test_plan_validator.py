@@ -476,6 +476,58 @@ def test_price_signal_kept_for_colloquial_excellent_price_phrasing() -> None:
     assert "price_signal" in {call.tool for call in validated.tool_calls}
 
 
+def test_price_signal_kept_for_hebrew_good_price_follow_up() -> None:
+    """"האם זה מחיר טוב?" ("is this a good price?") is comparative-price
+    intent, exactly as its English equivalent "is this a good price?" has
+    always been. This is the plainest way a Hebrew speaker asks the
+    question, and the guard used to drop `price_signal` for it - a
+    follow-up turn states no price/size of its own, so the plan's own
+    claims cannot justify the call either."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="בוקי בן יגלי 4, תל אביב",
+            asking_price=5_000_000,
+            sqm=90,
+        ),
+        buyer_goal="price_validation",
+        claims=[],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(plan, buyer_prompt="האם זה מחיר טוב?")
+
+    assert "price_signal" in {call.tool for call in validated.tool_calls}
+
+
+def test_generic_hebrew_good_claim_without_price_reference_does_not_justify_price_signal() -> None:
+    """"טוב" on its own is as generic as "מצוין" - "מיקום טוב" (good
+    location) must not smuggle `price_signal` in without a price/cost word
+    somewhere in the same prompt."""
+    plan = TriagePlan(
+        property_details=PropertyDetails(
+            listing_type="purchase",
+            raw_address="HaYarkon 120, Tel Aviv",
+            asking_price=2_400_000,
+            rooms=3.5,
+            sqm=84,
+        ),
+        buyer_goal="fast_claim_triage",
+        claims=[Claim(text="מיקום טוב", type="subjective", category="condition")],
+        tool_calls=[
+            ToolCall(tool="geo_resolver", arguments={}),
+            ToolCall(tool="price_signal", arguments={}),
+        ],
+    )
+
+    validated = validate_plan(plan, buyer_prompt="דירה למכירה, מיקום טוב")
+
+    assert "price_signal" not in {call.tool for call in validated.tool_calls}
+
+
 def test_generic_excellent_claim_without_price_reference_does_not_justify_price_signal() -> None:
     """"מצוין"/"מעולה" alone (no accompanying "מחיר"/price reference) must
     NOT count as comparative-price intent - it is a generic adjective used

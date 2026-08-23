@@ -406,6 +406,16 @@ _COMPARATIVE_JUDGMENT_MARKERS: tuple[str, ...] = (
     "מצוין",
     "מצויין",
     "מעולה",
+    # Same rule for the plainest price question of all - "האם זה מחיר
+    # טוב?" ("is this a good price?"). English already had "good price"
+    # in `_COMPARATIVE_PRICE_MARKERS`, but its Hebrew equivalent matched
+    # nothing, so the guard silently dropped price_signal for the most
+    # natural way a Hebrew speaker asks it. Like the adjectives above,
+    # these are generic on their own ("מיקום טוב") and count only when a
+    # price/cost word is present in the same prompt.
+    "טוב",
+    "סביר",
+    "הגיוני",
 )
 
 
